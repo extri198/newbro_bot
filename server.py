@@ -17,7 +17,7 @@ def send_telegram_message(text):
     payload = {"chat_id": CHAT_ID, "text": text}
     response = requests.post(url, data=payload)
     if not response.ok:
-        print("❌ Telegram error:", response.text)
+        print("❌ Ошибка отправки в Telegram:", response.text)
 
 
 def get_token_info(mint):
@@ -86,10 +86,7 @@ def webhook():
                     receiver = t.get("toUserAccount", "неизвестно")
 
                     name, symbol, decimals = get_token_info(mint)
-                    if decimals:
-                        amount = int(raw_amount) / (10 ** decimals)
-                    else:
-                        amount = raw_amount
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
 
                     msg += (
                         f"\n🔁 Токен-трансфер:"
@@ -99,12 +96,29 @@ def webhook():
                         f"\n🔢 Кол-во: {amount}"
                     )
 
+            # Минтинг токена
+            elif tx_type == "TOKEN_MINT" and tx.get("tokenTransfers"):
+                for t in tx["tokenTransfers"]:
+                    mint = t.get("mint", "")
+                    raw_amount = t.get("tokenAmount", 0)
+                    receiver = t.get("toUserAccount", "неизвестно")
+
+                    name, symbol, decimals = get_token_info(mint)
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
+
+                    msg += (
+                        f"\n🪙 Минтинг токена:"
+                        f"\n🔸 Токен: {name or mint} ({symbol})"
+                        f"\n📥 Получатель: {receiver}"
+                        f"\n🔢 Кол-во: {amount}"
+                    )
+
             send_telegram_message(msg)
 
         return '', 200
 
     except Exception as e:
-        print("❌ Ошибка в обработке запроса:", str(e))
+        print("❌ Ошибка обработки запроса:", str(e))
         return 'Internal Server Error', 500
 
 
