@@ -17,7 +17,11 @@ def send_telegram_message(text):
     payload = {"chat_id": CHAT_ID, "text": text}
     response = requests.post(url, data=payload)
     if not response.ok:
-        print("❌ Ошибка отправки в Telegram:", response.text)
+        print("❌ Telegram error:", response.text)
+
+
+def shorten(addr):
+    return addr[:4] + "..." + addr[-4:] if addr else "—"
 
 
 def get_token_info(mint):
@@ -27,10 +31,13 @@ def get_token_info(mint):
         data = response.json()
         if isinstance(data, list) and data:
             token = data[0]
-            return token.get("name", ""), token.get("symbol", ""), token.get("decimals", 0)
+            name = token.get("name") or shorten(mint)
+            symbol = token.get("symbol") or "-"
+            decimals = token.get("decimals", 0)
+            return name, symbol, decimals
     except Exception as e:
-        print(f"❌ Ошибка получения токена по mint {mint}: {e}")
-    return "", "", 0
+        print(f"❌ Ошибка получения токена {mint}: {e}")
+    return shorten(mint), "-", 0
 
 
 def get_sol_usd_price():
@@ -65,8 +72,8 @@ def webhook():
                 sol = nft_event.get("amount", 0) / 1e9
                 usd_price = get_sol_usd_price()
                 usd = sol * usd_price
-                buyer = nft_event.get("buyer", "")
-                seller = nft_event.get("seller", "")
+                buyer = shorten(nft_event.get("buyer", ""))
+                seller = shorten(nft_event.get("seller", ""))
                 source = nft_event.get("source", "не указано")
 
                 msg += (
@@ -82,15 +89,15 @@ def webhook():
                 for t in tx["tokenTransfers"]:
                     mint = t.get("mint", "")
                     raw_amount = t.get("tokenAmount", 0)
-                    sender = t.get("fromUserAccount", "неизвестно")
-                    receiver = t.get("toUserAccount", "неизвестно")
+                    sender = shorten(t.get("fromUserAccount", ""))
+                    receiver = shorten(t.get("toUserAccount", ""))
 
                     name, symbol, decimals = get_token_info(mint)
                     amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
 
                     msg += (
                         f"\n🔁 Токен-трансфер:"
-                        f"\n🔸 Токен: {name or mint} ({symbol})"
+                        f"\n🔸 {name} ({symbol})"
                         f"\n📤 Отправитель: {sender}"
                         f"\n📥 Получатель: {receiver}"
                         f"\n🔢 Кол-во: {amount}"
@@ -101,17 +108,55 @@ def webhook():
                 for t in tx["tokenTransfers"]:
                     mint = t.get("mint", "")
                     raw_amount = t.get("tokenAmount", 0)
-                    receiver = t.get("toUserAccount", "неизвестно")
+                    receiver = shorten(t.get("toUserAccount", ""))
 
                     name, symbol, decimals = get_token_info(mint)
                     amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
 
                     msg += (
                         f"\n🪙 Минтинг токена:"
-                        f"\n🔸 Токен: {name or mint} ({symbol})"
+                        f"\n🔸 {name} ({symbol})"
                         f"\n📥 Получатель: {receiver}"
                         f"\n🔢 Кол-во: {amount}"
                     )
+
+            # Своп токенов
+            elif tx_type == "TOKEN_SWAP":
+                msg += "\n🔄 Обмен токенов:"
+                for t in tx.get("tokenTransfers", []):
+                    mint = t.get("mint", "")
+                    raw_amount = t.get("tokenAmount", 0)
+                    sender = shorten(t.get("fromUserAccount", ""))
+                    receiver = shorten(t.get("toUserAccount", ""))
+
+                    name, symbol, decimals = get_token_info(mint)
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
+
+                    msg += (
+                        f"\n🔸 {name} ({symbol})"
+                        f"\n📤 От: {sender}"
+                        f"\n📥 Кому: {receiver}"
+                        f"\n💱 Кол-во: {amount}"
+                    )
+
+            # Иначе — просто отобразить тип
+            else:
+                if tx.get("tokenTransfers"):
+                    msg += "\n📦 Перемещения токенов:"
+                    for t in tx["tokenTransfers"]:
+                        mint = t.get("mint", "")
+                        raw_amount = t.get("tokenAmount", 0)
+                        sender = shorten(t.get("fromUserAccount", ""))
+                        receiver = shorten(t.get("toUserAccount", ""))
+                        name, symbol, decimals = get_token_info(mint)
+                        amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
+
+                        msg += (
+                            f"\n🔸 {name} ({symbol})"
+                            f"\n📤 От: {sender}"
+                            f"\n📥 Кому: {receiver}"
+                            f"\n🔢 Кол-во: {amount}"
+                        )
 
             send_telegram_message(msg)
 
