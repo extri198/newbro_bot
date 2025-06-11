@@ -1,33 +1,56 @@
 from flask import Flask, request
 import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = 'ваш_токен_бота'
-CHAT_ID = 'ваш_chat_id'
-WEBHOOK_SECRET = 'supersecret123'  # тот же токен, что вы укажете в Helius, если сможете
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
-    requests.post(url, data=payload)
+    response = requests.post(url, data=payload)
+    if not response.ok:
+        print("❌ Ошибка Telegram:", response.text)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
-    print("Получены данные от Helius:", data)
+    auth_header = request.headers.get('Authorization')
+    if auth_header != f'Bearer {WEBHOOK_SECRET}':
+        print("❌ Неверный заголовок Authorization:", auth_header)
+        return 'Forbidden', 403
 
-    if not isinstance(data, list):
-        return '', 200  # защита от неожиданного формата
+    try:
+        data = request.get_json(force=True)
+        print("✅ Получены данные от Helius:", data)
 
-    for tx in data:
-        signature = tx.get("signature", "<нет подписи>")
-        tx_type = tx.get("type", "Неизвестный тип")
-        msg = f"📥 Новая транзакция:
-→ Signature: {signature}
-→ Тип: {tx_type}"
-        send_telegram_message(msg)
-    return '', 200
+        txs = data if isinstance(data, list) else data.get("transactions", [])
+        for tx in txs:
+            signature = tx.get("signature", "нет сигнатуры")
+            tx_type = tx.get("type", "неизвестный тип")
+            description = tx.get("description", "-")
+            source = tx.get("source", "-")
+
+            msg = (
+                f"📥 Новая транзакция:\n"
+                f"→ Тип: {tx_type}\n"
+                f"→ Signature: {signature}\n"
+                f"→ Source: {source}\n"
+                f"→ Описание: {description}"
+            )
+            send_telegram_message(msg)
+
+        return '', 200
+
+    except Exception as e:
+        print("❌ Ошибка обработки запроса:", str(e))
+        return 'Internal Server Error', 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
