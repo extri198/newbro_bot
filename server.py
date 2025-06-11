@@ -2,6 +2,7 @@ from flask import Flask, request
 import requests
 import os
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 app = Flask(__name__)
@@ -11,12 +12,30 @@ CHAT_ID = os.getenv("CHAT_ID")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 
-# Кэш для цен токенов, чтобы не делать лишние запросы
+# Известные fee-collector адреса (можно расширять)
+FEE_WALLETS = {
+    "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
+    "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"   # Другие
+}
+
+# CoinGecko ID соответствие
+COINGECKO_IDS = {
+    "sol": "solana",
+    "bonk": "bonk",
+    "usdc": "usd-coin",
+    "usdt": "tether",
+    "eth": "ethereum"
+}
+
 TOKEN_PRICE_CACHE = {}
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text}
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
     response = requests.post(url, data=payload)
     if not response.ok:
         print("❌ Telegram error:", response.text)
@@ -43,10 +62,14 @@ def get_token_usd_price(symbol):
     symbol = symbol.lower()
     if symbol in TOKEN_PRICE_CACHE:
         return TOKEN_PRICE_CACHE[symbol]
+    coingecko_id = COINGECKO_IDS.get(symbol)
+    if not coingecko_id:
+        return 0
     try:
-        response = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd")
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd"
+        response = requests.get(url)
         data = response.json()
-        usd = data.get(symbol, {}).get("usd", 0)
+        usd = data.get(coingecko_id, {}).get("usd", 0)
         if usd:
             TOKEN_PRICE_CACHE[symbol] = usd
         return usd
@@ -68,48 +91,38 @@ def webhook():
         for tx in txs:
             tx_type = tx.get("type", "неизвестно")
             signature = tx.get("signature", "нет")
-            msg = f"📥 Новая транзакция: {tx_type}\n🔗 Signature: {signature}"
+            msg = f"📥 <b>Новая транзакция: {tx_type}</b>\n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>"
 
-            # Универсальный парсинг токенов (включая SWAP, MINT, TRANSFER и др.)
-            if tx.get("tokenTransfers"):
-                msg += "\n📦 Перемещения токенов:"
-                for t in tx["tokenTransfers"]:
+            transfers = tx.get("tokenTransfers", [])
+            if transfers:
+                msg += "\n\n📦 <b>Перемещения токенов:</b>"
+                for t in transfers:
                     mint = t.get("mint", "")
+                    from_addr = t.get("fromUserAccount", "")
+                    to_addr = t.get("toUserAccount", "")
+                    if from_addr in FEE_WALLETS or to_addr in FEE_WALLETS:
+                        continue  # пропускаем комиссии
+
                     raw_amount = t.get("tokenAmount", 0)
-                    sender = shorten(t.get("fromUserAccount", ""))
-                    receiver = shorten(t.get("toUserAccount", ""))
                     name, symbol, decimals = get_token_info(mint)
-                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
+
                     price_per_token = get_token_usd_price(symbol)
-                    usd = amount * price_per_token if price_per_token else None
+                    usd = amount * price_per_token if price_per_token else 0
+
+                    # Выделим цвет: приход (зеленый) или уход (красный)
+                    direction = "⬅️" if to_addr and not from_addr else "➡️"
+                    color_prefix = "<b><span style='color:green'>+" if direction == "⬅️" else "<b><span style='color:red'>-"
+                    amount_str = f"{amount:.6f}</span></b>"
+                    usd_str = f" (~${usd:.2f})" if usd else ""
 
                     msg += (
-                        f"\n🔸 {name} ({symbol})"
-                        f"\n📤 От: {sender}"
-                        f"\n📥 Кому: {receiver}"
-                        f"\n🔢 Кол-во: {amount:.6f}" +
-                        (f" (~${usd:.2f})" if usd else "")
-                        + f"\n🔗 https://solscan.io/token/{mint}"
+                        f"\n🔸 <b>{name}</b> ({symbol})"
+                        f"\n📤 От: {shorten(from_addr)}"
+                        f"\n📥 Кому: {shorten(to_addr)}"
+                        f"\n💰 Сумма: {color_prefix}{abs(amount):.6f}</span></b>{usd_str}"
+                        f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
                     )
-
-            # NFT продажи
-            elif tx_type == "NFT_SALE" and tx.get("events", {}).get("nft"):
-                nft_event = tx["events"]["nft"]
-                nft_name = nft_event.get("description", "NFT без названия")
-                sol = nft_event.get("amount", 0) / 1e9
-                usd_price = get_token_usd_price("solana")
-                usd = sol * usd_price
-                buyer = shorten(nft_event.get("buyer", ""))
-                seller = shorten(nft_event.get("seller", ""))
-                source = nft_event.get("source", "не указано")
-
-                msg += (
-                    f"\n🎨 NFT: {nft_name}"
-                    f"\n💰 Сумма: {sol:.2f} SOL (~${usd:.2f})"
-                    f"\n🛍 Площадка: {source}"
-                    f"\n📤 Продавец: {seller}"
-                    f"\n📥 Покупатель: {buyer}"
-                )
 
             send_telegram_message(msg)
 
