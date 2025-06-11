@@ -11,6 +11,8 @@ CHAT_ID = os.getenv("CHAT_ID")
 WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 
+# Кэш для цен токенов, чтобы не делать лишние запросы
+TOKEN_PRICE_CACHE = {}
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -19,10 +21,8 @@ def send_telegram_message(text):
     if not response.ok:
         print("❌ Telegram error:", response.text)
 
-
 def shorten(addr):
     return addr[:4] + "..." + addr[-4:] if addr else "—"
-
 
 def get_token_info(mint):
     try:
@@ -39,15 +39,20 @@ def get_token_info(mint):
         print(f"❌ Ошибка получения токена {mint}: {e}")
     return shorten(mint), "-", 0
 
-
-def get_sol_usd_price():
+def get_token_usd_price(symbol):
+    symbol = symbol.lower()
+    if symbol in TOKEN_PRICE_CACHE:
+        return TOKEN_PRICE_CACHE[symbol]
     try:
-        response = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
-        return response.json().get("solana", {}).get("usd", 0)
+        response = requests.get(f"https://api.coingecko.com/api/v3/simple/price?ids={symbol}&vs_currencies=usd")
+        data = response.json()
+        usd = data.get(symbol, {}).get("usd", 0)
+        if usd:
+            TOKEN_PRICE_CACHE[symbol] = usd
+        return usd
     except Exception as e:
-        print(f"❌ Ошибка получения курса SOL: {e}")
+        print(f"❌ Ошибка получения курса {symbol.upper()}: {e}")
         return 0
-
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -65,12 +70,34 @@ def webhook():
             signature = tx.get("signature", "нет")
             msg = f"📥 Новая транзакция: {tx_type}\n🔗 Signature: {signature}"
 
-            # NFT продажа
-            if tx_type == "NFT_SALE" and tx.get("events", {}).get("nft"):
+            # Универсальный парсинг токенов (включая SWAP, MINT, TRANSFER и др.)
+            if tx.get("tokenTransfers"):
+                msg += "\n📦 Перемещения токенов:"
+                for t in tx["tokenTransfers"]:
+                    mint = t.get("mint", "")
+                    raw_amount = t.get("tokenAmount", 0)
+                    sender = shorten(t.get("fromUserAccount", ""))
+                    receiver = shorten(t.get("toUserAccount", ""))
+                    name, symbol, decimals = get_token_info(mint)
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
+                    price_per_token = get_token_usd_price(symbol)
+                    usd = amount * price_per_token if price_per_token else None
+
+                    msg += (
+                        f"\n🔸 {name} ({symbol})"
+                        f"\n📤 От: {sender}"
+                        f"\n📥 Кому: {receiver}"
+                        f"\n🔢 Кол-во: {amount:.6f}" +
+                        (f" (~${usd:.2f})" if usd else "")
+                        + f"\n🔗 https://solscan.io/token/{mint}"
+                    )
+
+            # NFT продажи
+            elif tx_type == "NFT_SALE" and tx.get("events", {}).get("nft"):
                 nft_event = tx["events"]["nft"]
                 nft_name = nft_event.get("description", "NFT без названия")
                 sol = nft_event.get("amount", 0) / 1e9
-                usd_price = get_sol_usd_price()
+                usd_price = get_token_usd_price("solana")
                 usd = sol * usd_price
                 buyer = shorten(nft_event.get("buyer", ""))
                 seller = shorten(nft_event.get("seller", ""))
@@ -84,80 +111,6 @@ def webhook():
                     f"\n📥 Покупатель: {buyer}"
                 )
 
-            # Токен-трансфер
-            elif tx_type == "TRANSFER" and tx.get("tokenTransfers"):
-                for t in tx["tokenTransfers"]:
-                    mint = t.get("mint", "")
-                    raw_amount = t.get("tokenAmount", 0)
-                    sender = shorten(t.get("fromUserAccount", ""))
-                    receiver = shorten(t.get("toUserAccount", ""))
-
-                    name, symbol, decimals = get_token_info(mint)
-                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
-
-                    msg += (
-                        f"\n🔁 Токен-трансфер:"
-                        f"\n🔸 {name} ({symbol})"
-                        f"\n📤 Отправитель: {sender}"
-                        f"\n📥 Получатель: {receiver}"
-                        f"\n🔢 Кол-во: {amount}"
-                    )
-
-            # Минтинг токена
-            elif tx_type == "TOKEN_MINT" and tx.get("tokenTransfers"):
-                for t in tx["tokenTransfers"]:
-                    mint = t.get("mint", "")
-                    raw_amount = t.get("tokenAmount", 0)
-                    receiver = shorten(t.get("toUserAccount", ""))
-
-                    name, symbol, decimals = get_token_info(mint)
-                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
-
-                    msg += (
-                        f"\n🪙 Минтинг токена:"
-                        f"\n🔸 {name} ({symbol})"
-                        f"\n📥 Получатель: {receiver}"
-                        f"\n🔢 Кол-во: {amount}"
-                    )
-
-            # Своп токенов
-            elif tx_type == "TOKEN_SWAP":
-                msg += "\n🔄 Обмен токенов:"
-                for t in tx.get("tokenTransfers", []):
-                    mint = t.get("mint", "")
-                    raw_amount = t.get("tokenAmount", 0)
-                    sender = shorten(t.get("fromUserAccount", ""))
-                    receiver = shorten(t.get("toUserAccount", ""))
-
-                    name, symbol, decimals = get_token_info(mint)
-                    amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
-
-                    msg += (
-                        f"\n🔸 {name} ({symbol})"
-                        f"\n📤 От: {sender}"
-                        f"\n📥 Кому: {receiver}"
-                        f"\n💱 Кол-во: {amount}"
-                    )
-
-            # Иначе — просто отобразить тип
-            else:
-                if tx.get("tokenTransfers"):
-                    msg += "\n📦 Перемещения токенов:"
-                    for t in tx["tokenTransfers"]:
-                        mint = t.get("mint", "")
-                        raw_amount = t.get("tokenAmount", 0)
-                        sender = shorten(t.get("fromUserAccount", ""))
-                        receiver = shorten(t.get("toUserAccount", ""))
-                        name, symbol, decimals = get_token_info(mint)
-                        amount = int(raw_amount) / (10 ** decimals) if decimals else raw_amount
-
-                        msg += (
-                            f"\n🔸 {name} ({symbol})"
-                            f"\n📤 От: {sender}"
-                            f"\n📥 Кому: {receiver}"
-                            f"\n🔢 Кол-во: {amount}"
-                        )
-
             send_telegram_message(msg)
 
         return '', 200
@@ -165,7 +118,6 @@ def webhook():
     except Exception as e:
         print("❌ Ошибка обработки запроса:", str(e))
         return 'Internal Server Error', 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
