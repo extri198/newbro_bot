@@ -15,7 +15,7 @@ HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 # Известные fee-collector адреса (можно расширять)
 FEE_WALLETS = {
     "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
-    "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"   # Другие
+    "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
 }
 
 # CoinGecko ID соответствие
@@ -110,17 +110,14 @@ def webhook():
                     price_per_token = get_token_usd_price(symbol)
                     usd = amount * price_per_token if price_per_token else 0
 
-                    # Выделим цвет: приход (зеленый) или уход (красный)
-                    direction = "⬅️" if to_addr and not from_addr else "➡️"
-                    color_prefix = "<b><span style='color:green'>+" if direction == "⬅️" else "<b><span style='color:red'>-"
-                    amount_str = f"{amount:.6f}</span></b>"
-                    usd_str = f" (~${usd:.2f})" if usd else ""
+                    emoji = "🟢" if to_addr and not from_addr else "🔴"
+                    amount_line = f"{emoji} <b>{amount:.6f}</b>{f' (~${usd:.2f})' if usd else ''}"
 
                     msg += (
                         f"\n🔸 <b>{name}</b> ({symbol})"
                         f"\n📤 От: {shorten(from_addr)}"
                         f"\n📥 Кому: {shorten(to_addr)}"
-                        f"\n💰 Сумма: {color_prefix}{abs(amount):.6f}</span></b>{usd_str}"
+                        f"\n💰 Сумма: {amount_line}"
                         f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
                     )
 
