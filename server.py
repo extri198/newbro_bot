@@ -9,6 +9,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
 
+
 # Отправка сообщения в Telegram через requests
 def send_message(message: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -19,8 +20,7 @@ def send_message(message: str):
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
+        "parse_mode": "HTML"
     }
 
     try:
@@ -31,18 +31,10 @@ def send_message(message: str):
 
 
 # Получение метаданных токена из Helius
-IGNORED_MINTS = {
-    "So11111111111111111111111111111111111111112",
-    "11111111111111111111111111111111",
-    "ComputeBudget111111111111111111111111111111",
-    "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-    "SysvarRent111111111111111111111111111111111"
-}
-
 def get_token_metadata(mint):
     try:
-        if not mint or mint in IGNORED_MINTS:
-            return {"symbol": mint[-4:]}
+        if mint == "So11111111111111111111111111111111111111112":
+            return {"symbol": "SOL"}
 
         url = f"https://api.helius.xyz/v0/tokens/metadata?mints[]={mint}&api-key={HELIUS_API_KEY}"
         res = requests.get(url)
@@ -76,16 +68,19 @@ def webhook():
             token_standard = transfer.get("tokenStandard")
 
             symbol = "Unknown"
-            metadata = get_token_metadata(mint)
-            if metadata and "symbol" in metadata:
-                symbol = metadata["symbol"]
+            if mint and mint != "So11111111111111111111111111111111111111112":
+                metadata = get_token_metadata(mint)
+                if metadata and "symbol" in metadata:
+                    symbol = metadata["symbol"]
+            elif mint == "So11111111111111111111111111111111111111112":
+                symbol = "SOL"
 
             if to_user and not from_user:
-                direction = "<b><span style='color:green;'>➕</span></b>"
+                direction = "➕"
             elif from_user and not to_user:
-                direction = "<b><span style='color:red;'>➖</span></b>"
+                direction = "➖"
             else:
-                direction = "<b>🔁</b>"
+                direction = "🔁"
 
             line = f"{direction} <b>{amount}</b> <code>{symbol}</code>"
             message_lines.append(line)
