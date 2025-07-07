@@ -19,8 +19,7 @@ def send_message(message: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
+        "text": message
     }
 
     try:
@@ -57,7 +56,7 @@ def webhook():
         message_lines = []
         description = tx.get("description", "")
         if description:
-            message_lines.append(f"<b>{description}</b>")
+            message_lines.append(f"{description}")
 
         transfers = tx.get("tokenTransfers", [])
         for transfer in transfers:
@@ -78,15 +77,15 @@ def webhook():
             else:
                 direction = "🔁"
 
-            # Цветовая подсветка символа токена
+            # Цветовая подсветка символа токена через эмодзи
             if symbol == "SOL":
-                color = "#0088cc"  # синий
+                symbol_display = "🔷 SOL"
             elif symbol == "Unknown":
-                color = "#ff4444"  # красный
+                symbol_display = "❗ Unknown"
             else:
-                color = "#cc5500"  # оранжевый / по умолчанию
+                symbol_display = f"🟠 {symbol}"
 
-            line = f"{direction} <b>{amount}</b> <span style='color:{color}'>{symbol}</span>"
+            line = f"{direction} {amount} {symbol_display}"
             message_lines.append(line)
 
         if message_lines:
