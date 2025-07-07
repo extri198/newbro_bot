@@ -64,12 +64,10 @@ def webhook():
             to_user = transfer.get("toUserAccount")
             token_standard = transfer.get("tokenStandard")
 
-            metadata = get_token_metadata(mint)
+            metadata = get_token_metadata(mint) if mint else None
             symbol = metadata.get("symbol") if metadata else "Unknown"
 
-            color = "green" if to_user == TELEGRAM_CHAT_ID else "red"
-            direction = "➕" if color == "green" else "➖"
-
+            direction = "➕" if to_user else ("➖" if from_user else "🔁")
             line = f"{direction} <b>{amount}</b> <code>{symbol}</code>"
             message_lines.append(line)
 
