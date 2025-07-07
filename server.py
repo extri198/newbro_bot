@@ -33,6 +33,9 @@ def send_message(message: str):
 # Получение метаданных токена из Helius
 def get_token_metadata(mint):
     try:
+        if mint == "So11111111111111111111111111111111111111112":
+            return {"symbol": "SOL"}
+
         url = f"https://api.helius.xyz/v0/tokens/metadata?mints[]={mint}&api-key={HELIUS_API_KEY}"
         res = requests.get(url)
         res.raise_for_status()
@@ -64,10 +67,21 @@ def webhook():
             to_user = transfer.get("toUserAccount")
             token_standard = transfer.get("tokenStandard")
 
-            metadata = get_token_metadata(mint) if mint else None
-            symbol = metadata.get("symbol") if metadata else "Unknown"
+            symbol = "Unknown"
+            if mint and mint != "So11111111111111111111111111111111111111112":
+                metadata = get_token_metadata(mint)
+                if metadata and "symbol" in metadata:
+                    symbol = metadata["symbol"]
+            elif mint == "So11111111111111111111111111111111111111112":
+                symbol = "SOL"
 
-            direction = "➕" if to_user else ("➖" if from_user else "🔁")
+            if to_user and not from_user:
+                direction = "<b><span style='color:green;'>➕</span></b>"
+            elif from_user and not to_user:
+                direction = "<b><span style='color:red;'>➖</span></b>"
+            else:
+                direction = "🔁"
+
             line = f"{direction} <b>{amount}</b> <code>{symbol}</code>"
             message_lines.append(line)
 
