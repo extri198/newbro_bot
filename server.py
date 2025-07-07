@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from flask import Flask, request
+from aiogram import Bot
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,92 +13,100 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 
-TELEGRAM_URL = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+bot = Bot(token=TELEGRAM_BOT_TOKEN)
 
 
-def get_token_metadata(mint_address):
-    if mint_address == "So11111111111111111111111111111111111111112":
-        return {
-            "name": "Wrapped SOL",
-            "symbol": "SOL",
-            "image": "https://cryptologos.cc/logos/solana-sol-logo.png"
-        }
-
-    url = "https://api.helius.xyz/v0/tokens/metadata"
-    headers = {"accept": "application/json"}
-    params = {
-        "mints[]": [mint_address],
-        "api-key": HELIUS_API_KEY
-    }
-
+def fetch_token_metadata(mint: str):
     try:
-        response = requests.get(url, headers=headers, params=params)
+        url = f"https://api.helius.xyz/v0/tokens/metadata?mints[]={mint}&api-key={HELIUS_API_KEY}"
+        response = requests.get(url)
         response.raise_for_status()
-        data = response.json()
-        if data and isinstance(data, list) and data[0]:
-            return data[0]
-        else:
-            print(f"⚠️ Не удалось найти метаданные для токена {mint_address}")
-            return None
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Ошибка при получении метаданных токена {mint_address}: {e}")
-        return None
-
-
-def format_token_transfer(transfer):
-    mint = transfer.get("mint")
-    amount = transfer.get("tokenAmount")
-    from_acc = transfer.get("fromUserAccount")
-    to_acc = transfer.get("toUserAccount")
-
-    metadata = get_token_metadata(mint)
-    name = metadata.get("name") if metadata else "Unknown"
-    symbol = metadata.get("symbol") if metadata else ""
-
-    return (
-        f"\n🔸 <b>{name}</b> (<code>{symbol}</code>)"
-        f"\n📤 От: <code>{from_acc[:4]}...{from_acc[-4:]}</code>"
-        f"\n📥 Кому: <code>{to_acc[:4]}...{to_acc[-4:]}</code>"
-        f"\n🔢 Кол-во: <code>{amount}</code>"
-        f"\n🔗 <a href='https://solscan.io/token/{mint}'>Просмотр в Solscan</a>"
-    )
-
-
-def send_telegram_message(message):
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    try:
-        response = requests.post(TELEGRAM_URL, json=payload)
-        response.raise_for_status()
+        metadata = response.json()
+        if metadata and isinstance(metadata, list) and metadata[0]:
+            return metadata[0]
     except Exception as e:
-        print(f"❌ Ошибка при отправке сообщения в Telegram: {e}")
+        print(f"\n❌ Ошибка при получении метаданных токена {mint}: {e}\n")
+    return {"name": "Unknown", "symbol": "", "priceUSD": None}
+
+
+def short(address):
+    return address[:4] + "..." + address[-4:] if address else "—"
+
+
+def format_amount(amount, decimals):
+    return float(amount) / (10 ** decimals)
+
+
+def is_platform_fee_account(account):
+    platform_accounts = [
+        "ComputeBudget111111111111111111111111111111",
+        "11111111111111111111111111111111",
+        "SysvarRent111111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    ]
+    return account in platform_accounts
 
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    data = request.get_json()
-    print("✅ Получены данные:", json.dumps(data, indent=2))
+    data = request.json
+    print("\n✅ Получены данные:", json.dumps(data, indent=2))
 
     for tx in data:
         signature = tx.get("signature")
-        tx_type = tx.get("type")
-        token_transfers = tx.get("tokenTransfers", [])
+        transfers = tx.get("tokenTransfers", [])
+        if not transfers:
+            continue
 
-        message = f"📥 Новая транзакция: <b>{tx_type}</b>\n"
-        message += f"🔗 Signature: <code>{signature}</code>"
+        message = f"\ud83d\udce5 Новая транзакция:\n\ud83d\udd17 Signature: <code>{signature}</code>\n"
+        for transfer in transfers:
+            mint = transfer.get("mint")
+            sender = transfer.get("fromUserAccount")
+            recipient = transfer.get("toUserAccount")
+            amount = transfer.get("tokenAmount")
+            token_standard = transfer.get("tokenStandard")
 
-        if token_transfers:
-            message += "\n📦 Перемещения токенов:"
-            for transfer in token_transfers:
-                message += format_token_transfer(transfer)
+            if is_platform_fee_account(sender) or is_platform_fee_account(recipient):
+                continue
 
-        send_telegram_message(message)
+            meta = fetch_token_metadata(mint)
+            name = meta.get("name") or short(mint)
+            symbol = meta.get("symbol") or ""
+            price_usd = meta.get("priceUSD")
+
+            direction = "\ud83d\udce4" if amount < 0 else "\ud83d\udce5"
+            color = "<b><font color=\"#ff0000\">" if amount < 0 else "<b><font color=\"#00cc66\">"
+
+            value = abs(amount)
+            usd_value = f"\n💵 ≈ ${round(value * price_usd, 2)}" if price_usd else ""
+
+            message += (
+                f"\n🔸 {name} ({symbol})"
+                f"\n{direction} От: {short(sender)}"
+                f"\n{direction} Кому: {short(recipient)}"
+                f"\n🔢 Кол-во: {color}{value}</font></b>{usd_value}"
+                f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
+            )
+
+        try:
+            requests.post(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                data={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "text": message,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True
+                }
+            )
+        except Exception as e:
+            print(f"❌ Ошибка при отправке сообщения в Telegram: {e}")
 
     return "ok"
+
+
+@app.route("/")
+def index():
+    return "✅ Webhook для Helius работает."
 
 
 if __name__ == "__main__":
