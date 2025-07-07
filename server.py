@@ -57,14 +57,13 @@ def webhook():
             return "Forbidden", 403
 
         data = request.json
-        if not data:
-            print("⚠️ Пустой JSON")
-            return "No data", 400
+        if not data or not isinstance(data, list):
+            print("⚠️ Некорректный JSON (ожидался список):", data)
+            return "Invalid format", 400
 
         print("✅ Получены данные:", data)
 
-        txs = data.get("transactions", [])
-        for tx in txs:
+        for tx in data:
             signature = tx.get("signature", "")
             tx_type = tx.get("type", "UNKNOWN")
 
