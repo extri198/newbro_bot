@@ -31,17 +31,17 @@ def send_message(message: str):
 
 
 # Получение метаданных токена из Helius
-def get_token_metadata(mint):
+def get_token_symbol(mint):
     try:
         if mint == "So11111111111111111111111111111111111111112":
-            return {"symbol": "SOL"}
+            return "SOL"
 
         url = f"https://api.helius.xyz/v0/tokens/metadata?mints[]={mint}&api-key={HELIUS_API_KEY}"
         res = requests.get(url)
         res.raise_for_status()
         metadata = res.json()
         if metadata and isinstance(metadata, list):
-            return metadata[0]
+            return metadata[0].get("symbol") or None
         return None
     except Exception as e:
         print(f"❌ Ошибка при получении метаданных токена {mint}: {e}")
@@ -65,16 +65,12 @@ def webhook():
             amount = transfer.get("tokenAmount")
             from_user = transfer.get("fromUserAccount")
             to_user = transfer.get("toUserAccount")
-            token_standard = transfer.get("tokenStandard")
 
-            symbol = "Unknown"
-            if mint and mint != "So11111111111111111111111111111111111111112":
-                metadata = get_token_metadata(mint)
-                if metadata and "symbol" in metadata:
-                    symbol = metadata["symbol"]
-            elif mint == "So11111111111111111111111111111111111111112":
-                symbol = "SOL"
+            symbol = get_token_symbol(mint)
+            if not symbol:
+                symbol = "Unknown"
 
+            # Определение направления
             if to_user and not from_user:
                 direction = "➕"
             elif from_user and not to_user:
@@ -82,7 +78,15 @@ def webhook():
             else:
                 direction = "🔁"
 
-            line = f"{direction} <b>{amount}</b> <code>{symbol}</code>"
+            # Цветовая подсветка символа токена
+            if symbol == "SOL":
+                color = "#0088cc"  # синий
+            elif symbol == "Unknown":
+                color = "#ff4444"  # красный
+            else:
+                color = "#cc5500"  # оранжевый / по умолчанию
+
+            line = f"{direction} <b>{amount}</b> <span style='color:{color}'>{symbol}</span>"
             message_lines.append(line)
 
         if message_lines:
