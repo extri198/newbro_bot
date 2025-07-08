@@ -1,156 +1,126 @@
-
-from flask import Flask, request
-import requests
 import os
-from dotenv import load_dotenv
 import json
-import logging
+import requests
+from flask import Flask, request
 
-load_dotenv()
 app = Flask(__name__)
 
-# Включаем debug-режим и подробное логгирование
-app.debug = True
-logging.basicConfig(level=logging.DEBUG)
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
-HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
+def send_message(message: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set!")
+        return
 
-FEE_WALLETS = {
-    "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
-    "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
-}
-
-COINGECKO_IDS = {
-    "sol": "solana",
-    "bonk": "bonk",
-    "usdc": "usd-coin",
-    "usdt": "tether",
-    "eth": "ethereum"
-}
-
-TOKEN_PRICE_CACHE = {}
-
-def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
-        "chat_id": CHAT_ID,
-        "text": text,
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
         "parse_mode": "HTML"
     }
-    response = requests.post(url, data=payload)
-    if not response.ok:
-        logging.error("❌ Telegram error: %s", response.text)
-
-def shorten(addr):
-    return addr[:4] + "..." + addr[-4:] if addr else "—"
-
-def get_token_info(mint):
-    try:
-        url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}&mintAccounts[]={mint}"
-        response = requests.get(url)
-        data = response.json()
-        if isinstance(data, list) and data:
-            token = data[0]
-            name = token.get("name") or shorten(mint)
-            symbol = token.get("symbol") or "-"
-            decimals = token.get("decimals", 0)
-            return name, symbol, decimals
-    except Exception as e:
-        logging.exception(f"❌ Ошибка получения токена {mint}")
-    return shorten(mint), "-", 0
-
-def get_token_usd_price(symbol):
-    symbol = symbol.lower()
-    if symbol in TOKEN_PRICE_CACHE:
-        logging.debug(f"[CACHE] {symbol.upper()} → ${TOKEN_PRICE_CACHE[symbol]}")
-        return TOKEN_PRICE_CACHE[symbol]
-
-    coingecko_id = COINGECKO_IDS.get(symbol)
-    if not coingecko_id:
-        logging.warning(f"❌ Нет CoinGecko ID для символа {symbol}")
-        return 0
 
     try:
-        url = f"https://api.coingecko.com/api/v3/simple/price"
-        params = {"ids": coingecko_id, "vs_currencies": "usd"}
-        headers = {"accept": "application/json"}
-
-        response = requests.get(url, params=params, headers=headers)
-        if response.status_code != 200:
-            logging.error(f"❌ CoinGecko статус {response.status_code}: {response.text}")
-            return 0
-
-        data = response.json()
-        usd = data.get(coingecko_id, {}).get("usd")
-        logging.debug(f"✅ Цена {symbol.upper()} = ${usd}")
-
-        if usd is not None:
-            TOKEN_PRICE_CACHE[symbol] = usd
-            return usd
-        else:
-            logging.warning(f"⚠️ Нет цены USD в ответе: {data}")
-            return 0
-
+        response = requests.post(url, data=payload)
+        response.raise_for_status()
     except Exception as e:
-        logging.exception(f"❌ Ошибка при запросе CoinGecko для {symbol.upper()}")
+        print(f"❌ Ошибка при отправке сообщения в Telegram: {e}")
+
+def get_token_symbol(mint):
+    try:
+        if mint == "So11111111111111111111111111111111111111112":
+            return "SOL"
+        url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"mintAccounts": [mint]}
+        res = requests.post(url, headers=headers, json=payload)
+        res.raise_for_status()
+        metadata = res.json()
+        if metadata and isinstance(metadata, list):
+            return metadata[0].get("symbol") or None
+        return None
+    except Exception as e:
+        print(f"❌ Ошибка при получении метаданных токена {mint}: {e}")
+        return None
+
+def get_sol_price():
+    try:
+        res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
+        res.raise_for_status()
+        return res.json().get("solana", {}).get("usd", 0)
+    except Exception as e:
+        print(f"❌ Ошибка при получении цены SOL: {e}")
         return 0
 
-
-@app.route('/webhook', methods=['POST'])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        logging.debug("📩 Получен webhook-запрос")
-        auth_header = request.headers.get('Authorization')
-        if auth_header != f'Bearer {WEBHOOK_SECRET}':
-            logging.warning("❌ Неверный токен: %s", auth_header)
-            return 'Forbidden', 403
+    data = request.get_json()
+    print("✅ Получены данные:", json.dumps(data, indent=2, ensure_ascii=False))
 
-        data = request.get_json(force=True)
-        logging.debug(f"📦 Полученные данные: {json.dumps(data)[:500]}")
+    sol_price_usd = get_sol_price()
 
-    auth_header = request.headers.get('Authorization')
-    if auth_header != f'Bearer {WEBHOOK_SECRET}':
-        logging.warning("❌ Неверный токен: %s", auth_header)
-        return 'Forbidden', 403
+    for tx in data:
+        message_lines = []
+        description = tx.get("description", "")
+        if description:
+            message_lines.append(f"<b>{description}</b>")
 
-    try:
-        data = request.get_json(force=True)
-        txs = data if isinstance(data, list) else data.get("transactions", [])
+        message_lines.append("")  # пустая строка
 
-        for tx in txs:
-            tx_type = tx.get("type", "неизвестно")
-            signature = tx.get("signature", "нет")
-            msg = f"📥 <b>Новая транзакция: {tx_type}</b>\n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>"
+        transfers = tx.get("tokenTransfers", [])
+        sol_amount = 0
+        token_amount = 0
+        token_symbol = ""
+        token_mint = ""
 
-            transfers = tx.get("tokenTransfers", [])
-            for tr in transfers:
-                amount_raw = tr.get("tokenAmount", 0)
-                mint = tr.get("mint")
-                from_addr = tr.get("fromUserAccount")
-                to_addr = tr.get("toUserAccount")
+        for transfer in transfers:
+            mint = transfer.get("mint")
+            token_mint = mint
+            amount = transfer.get("tokenAmount")
+            from_user = transfer.get("fromUserAccount")
+            to_user = transfer.get("toUserAccount")
 
-                name, symbol, decimals = get_token_info(mint)
-                amount = amount_raw / (10 ** decimals) if decimals else amount_raw
+            symbol = get_token_symbol(mint)
+            if not symbol:
+                symbol = "Unknown"
 
-                sol_usd_price = get_token_usd_price("sol")
+            try:
+                amount_value = float(amount)
+            except (TypeError, ValueError):
+                amount_value = 0
 
-                if symbol.lower() == "sol":
-                    amount_usd = amount * sol_usd_price
-                    msg += f"\n\n💸 <b>{amount:.4f} SOL</b> (~${amount_usd:.2f})"
-                    msg += f"\n🔄 От: <code>{shorten(from_addr)}</code> → <code>{shorten(to_addr)}</code>"
-                    msg += f"\n💰 Цена за 1 SOL: ${sol_usd_price:.4f}"
-                else:
-                    token_in_sol = amount  # по умолчанию считаем 1 токен = 1 SOL
-                    amount_usd = token_in_sol * sol_usd_price
-                    msg += f"\n\n🪙 <b>{amount:.4f} {symbol}</b> ≈ {token_in_sol:.4f} SOL (~${amount_usd:.2f})"
-                    msg += f"\n🔄 От: <code>{shorten(from_addr)}</code> → <code>{shorten(to_addr)}</code>"
+            direction = "🟢" if to_user else "🔴"
+            amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
 
-            send_telegram_message(msg)
-        return '', 200
+            usd_str = ""
+            if symbol == "SOL" and sol_price_usd:
+                usd_equiv = abs(amount_value) * sol_price_usd
+                usd_str = f" (~${usd_equiv:.2f})"
+                sol_amount += abs(amount_value)
+            elif symbol != "Unknown":
+                token_amount = abs(amount_value)
+                token_symbol = symbol
 
-    except Exception as e:
-        logging.exception("❌ Ошибка обработки webhook")
-        return 'Internal Server Error', 500
+            message_lines.append(f"{direction} {amount_formatted} {symbol}{usd_str}")
+
+        if sol_amount and token_amount:
+            price_per_token = (sol_amount * sol_price_usd) / token_amount
+            message_lines.append("")
+            message_lines.append(f"💰 Цена за 1 {token_symbol}: {price_per_token:.4f}")
+
+        if token_mint:
+            message_lines.append("")
+            message_lines.append(f"<code>{token_mint}</code>")
+
+        if message_lines:
+            send_message("\n".join(message_lines))
+
+    return "OK"
+
+@app.route("/")
+def root():
+    return "Бот работает"
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
