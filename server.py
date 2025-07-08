@@ -19,7 +19,8 @@ def send_message(message: str):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message
+        "text": message,
+        "parse_mode": "HTML"
     }
 
     try:
@@ -35,8 +36,12 @@ def get_token_symbol(mint):
         if mint == "So11111111111111111111111111111111111111112":
             return "SOL"
 
-        url = f"https://api.helius.xyz/v0/tokens/metadata?mints[]={mint}&api-key={HELIUS_API_KEY}"
-        res = requests.get(url)
+        url = "https://api.helius.xyz/v0/tokens/metadata"
+        params = {
+            "mints[]": mint,
+            "api-key": HELIUS_API_KEY
+        }
+        res = requests.get(url, params=params)
         res.raise_for_status()
         metadata = res.json()
         if metadata and isinstance(metadata, list):
@@ -56,7 +61,7 @@ def webhook():
         message_lines = []
         description = tx.get("description", "")
         if description:
-            message_lines.append(f"{description}")
+            message_lines.append(f"<b>{description}</b>")
 
         transfers = tx.get("tokenTransfers", [])
         for transfer in transfers:
@@ -71,21 +76,13 @@ def webhook():
 
             # Определение направления
             if to_user and not from_user:
-                direction = "➕"
+                direction = "🟢"
             elif from_user and not to_user:
-                direction = "➖"
+                direction = "🔴"
             else:
                 direction = "🔁"
 
-            # Цветовая подсветка символа токена через эмодзи
-            if symbol == "SOL":
-                symbol_display = "🔷 SOL"
-            elif symbol == "Unknown":
-                symbol_display = "❗ Unknown"
-            else:
-                symbol_display = f"🟠 {symbol}"
-
-            line = f"{direction} {amount} {symbol_display}"
+            line = f"{direction} <b>{amount}</b> {symbol}"
             message_lines.append(line)
 
         if message_lines:
