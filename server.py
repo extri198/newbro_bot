@@ -36,12 +36,11 @@ def get_token_symbol(mint):
         if mint == "So11111111111111111111111111111111111111112":
             return "SOL"
 
-        url = "https://api.helius.xyz/v0/tokens/metadata"
-        params = {
-            "mints[]": mint,
-            "api-key": HELIUS_API_KEY
-        }
-        res = requests.get(url, params=params)
+        url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        payload = {"mintAccounts": [mint]}
+
+        res = requests.post(url, headers=headers, json=payload)
         res.raise_for_status()
         metadata = res.json()
         if metadata and isinstance(metadata, list):
