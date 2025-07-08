@@ -73,15 +73,21 @@ def webhook():
             if not symbol:
                 symbol = "Unknown"
 
-            # Определение направления
-            if to_user and not from_user:
+            # Определение направления и форматирование суммы
+            try:
+                amount_value = float(amount)
+            except (TypeError, ValueError):
+                amount_value = 0
+
+            if amount_value > 0:
                 direction = "🟢"
-            elif from_user and not to_user:
+            elif amount_value < 0:
                 direction = "🔴"
             else:
                 direction = "🔁"
 
-            line = f"{direction} <b>{amount}</b> {symbol}"
+            amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
+            line = f"{direction} {amount_formatted} {symbol}"
             message_lines.append(line)
 
         if message_lines:
