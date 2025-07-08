@@ -100,12 +100,7 @@ def webhook():
             except (TypeError, ValueError):
                 amount_value = 0
 
-            if amount_value > 0:
-                direction = "🟢"
-            elif amount_value < 0:
-                direction = "🔴"
-            else:
-                direction = "🔁"
+            direction = "🟢" if from_user else "🔴"
 
             amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
 
