@@ -9,8 +9,6 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
 
-
-# Отправка сообщения в Telegram через requests
 def send_message(message: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set!")
@@ -29,17 +27,13 @@ def send_message(message: str):
     except Exception as e:
         print(f"❌ Ошибка при отправке сообщения в Telegram: {e}")
 
-
-# Получение метаданных токена из Helius
 def get_token_symbol(mint):
     try:
         if mint == "So11111111111111111111111111111111111111112":
             return "SOL"
-
         url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {"mintAccounts": [mint]}
-
         res = requests.post(url, headers=headers, json=payload)
         res.raise_for_status()
         metadata = res.json()
@@ -50,8 +44,6 @@ def get_token_symbol(mint):
         print(f"❌ Ошибка при получении метаданных токена {mint}: {e}")
         return None
 
-
-# Получение текущей цены SOL в USD через CoinGecko API
 def get_sol_price():
     try:
         res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
@@ -60,7 +52,6 @@ def get_sol_price():
     except Exception as e:
         print(f"❌ Ошибка при получении цены SOL: {e}")
         return 0
-
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -75,8 +66,7 @@ def webhook():
         if description:
             message_lines.append(f"<b>{description}</b>")
 
-        # Добавляем пустую строку
-        message_lines.append("")
+        message_lines.append("")  # пустая строка
 
         transfers = tx.get("tokenTransfers", [])
         sol_amount = 0
@@ -100,9 +90,7 @@ def webhook():
             except (TypeError, ValueError):
                 amount_value = 0
 
-            # Красный кружок если уходит, зелёный если приходит
-            direction = "🔴" if from_user else "🟢"
-
+            direction = "🟢" if to_user else "🔴"
             amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
 
             usd_str = ""
@@ -114,30 +102,25 @@ def webhook():
                 token_amount = abs(amount_value)
                 token_symbol = symbol
 
-            line = f"{direction} {amount_formatted} {symbol}{usd_str}"
-            message_lines.append(line)
+            message_lines.append(f"{direction} {amount_formatted} {symbol}{usd_str}")
 
-        # Вычисляем цену токена за 1, если есть и SOL, и другой токен
         if sol_amount and token_amount:
             price_per_token = (sol_amount * sol_price_usd) / token_amount
-            message_lines.append(f"\n Цена за 1 {token_symbol}: ${price_per_token:.4f}")
+            message_lines.append("")
+            message_lines.append(f"💰 Цена за 1 {token_symbol}: {price_per_token:.4f}")
 
-        # Добавляем адрес токена для копирования
         if token_mint:
             message_lines.append("")
             message_lines.append(f"<code>{token_mint}</code>")
 
         if message_lines:
-            message_text = "\n".join(message_lines)
-            send_message(message_text)
+            send_message("\n".join(message_lines))
 
     return "OK"
-
 
 @app.route("/")
 def root():
     return "Бот работает"
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
