@@ -75,13 +75,18 @@ def webhook():
         if description:
             message_lines.append(f"<b>{description}</b>")
 
+        # Добавляем пустую строку
+        message_lines.append("")
+
         transfers = tx.get("tokenTransfers", [])
         sol_amount = 0
         token_amount = 0
         token_symbol = ""
+        token_mint = ""
 
         for transfer in transfers:
             mint = transfer.get("mint")
+            token_mint = mint
             amount = transfer.get("tokenAmount")
             from_user = transfer.get("fromUserAccount")
             to_user = transfer.get("toUserAccount")
@@ -120,6 +125,11 @@ def webhook():
         if sol_amount and token_amount:
             price_per_token = (sol_amount * sol_price_usd) / token_amount
             message_lines.append(f"💰 <i>Цена за 1 {token_symbol}: ${price_per_token:.2f}</i>")
+
+        # Добавляем адрес токена для копирования
+        if token_mint:
+            message_lines.append("")
+            message_lines.append(f"<code>{token_mint}</code>")
 
         if message_lines:
             message_text = "\n".join(message_lines)
