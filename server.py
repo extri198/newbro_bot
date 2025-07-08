@@ -1,126 +1,150 @@
-import os
-import json
-import requests
 from flask import Flask, request
+import requests
+import os
+from dotenv import load_dotenv
+import json
 
+load_dotenv()
 app = Flask(__name__)
 
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-HELIUS_API_KEY = os.environ.get("HELIUS_API_KEY")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET")
+HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 
-def send_message(message: str):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set!")
-        return
+# Известные fee-collector адреса (можно расширять)
+FEE_WALLETS = {
+    "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
+    "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
+}
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+# CoinGecko ID соответствие
+COINGECKO_IDS = {
+    "sol": "solana",
+    "bonk": "bonk",
+    "usdc": "usd-coin",
+    "usdt": "tether",
+    "eth": "ethereum"
+}
+
+TOKEN_PRICE_CACHE = {}
+
+def send_telegram_message(text):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
+        "chat_id": CHAT_ID,
+        "text": text,
         "parse_mode": "HTML"
     }
+    response = requests.post(url, data=payload)
+    if not response.ok:
+        print("❌ Telegram error:", response.text)
 
-    try:
-        response = requests.post(url, data=payload)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"❌ Ошибка при отправке сообщения в Telegram: {e}")
+def shorten(addr):
+    return addr[:4] + "..." + addr[-4:] if addr else "—"
 
-def get_token_symbol(mint):
+def get_token_info(mint):
     try:
-        if mint == "So11111111111111111111111111111111111111112":
-            return "SOL"
-        url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}"
-        headers = {"Content-Type": "application/json"}
-        payload = {"mintAccounts": [mint]}
-        res = requests.post(url, headers=headers, json=payload)
-        res.raise_for_status()
-        metadata = res.json()
-        if metadata and isinstance(metadata, list):
-            return metadata[0].get("symbol") or None
-        return None
+        url = f"https://api.helius.xyz/v0/tokens/metadata?api-key={HELIUS_API_KEY}&mintAccounts[]={mint}"
+        response = requests.get(url)
+        data = response.json()
+        if isinstance(data, list) and data:
+            token = data[0]
+            name = token.get("name") or shorten(mint)
+            symbol = token.get("symbol") or "-"
+            decimals = token.get("decimals", 0)
+            return name, symbol, decimals
     except Exception as e:
-        print(f"❌ Ошибка при получении метаданных токена {mint}: {e}")
-        return None
+        print(f"❌ Ошибка получения токена {mint}: {e}")
+    return shorten(mint), "-", 0
 
-def get_sol_price():
+def get_token_usd_price(symbol):
+    symbol = symbol.lower()
+    if symbol in TOKEN_PRICE_CACHE:
+        return TOKEN_PRICE_CACHE[symbol]
+    coingecko_id = COINGECKO_IDS.get(symbol)
+    if not coingecko_id:
+        return 0
     try:
-        res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
-        res.raise_for_status()
-        return res.json().get("solana", {}).get("usd", 0)
+        url = f"https://api.coingecko.com/api/v3/simple/price?ids={coingecko_id}&vs_currencies=usd"
+        response = requests.get(url)
+        data = response.json()
+        usd = data.get(coingecko_id, {}).get("usd", 0)
+        if usd:
+            TOKEN_PRICE_CACHE[symbol] = usd
+        return usd
     except Exception as e:
-        print(f"❌ Ошибка при получении цены SOL: {e}")
+        print(f"❌ Ошибка получения курса {symbol.upper()}: {e}")
         return 0
 
-@app.route("/webhook", methods=["POST"])
+@app.route('/webhook', methods=['POST'])
 def webhook():
-    data = request.get_json()
-    print("✅ Получены данные:", json.dumps(data, indent=2, ensure_ascii=False))
+    auth_header = request.headers.get('Authorization')
+    if auth_header != f'Bearer {WEBHOOK_SECRET}':
+        print("❌ Неверный токен:", auth_header)
+        return 'Forbidden', 403
 
-    sol_price_usd = get_sol_price()
+    try:
+        data = request.get_json(force=True)
+        txs = data if isinstance(data, list) else data.get("transactions", [])
 
-    for tx in data:
-        message_lines = []
-        description = tx.get("description", "")
-        if description:
-            message_lines.append(f"<b>{description}</b>")
+        for tx in txs:
+            tx_type = tx.get("type", "неизвестно")
+            signature = tx.get("signature", "нет")
+            msg = f"📥 <b>Новая транзакция: {tx_type}</b>\n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>"
 
-        message_lines.append("")  # пустая строка
+            transfers = tx.get("tokenTransfers", [])
+            for tr in transfers:
+                amount_raw = tr.get("tokenAmount", 0)
+                mint = tr.get("mint")
+                from_addr = tr.get("fromUserAccount")
+                to_addr = tr.get("toUserAccount")
 
-        transfers = tx.get("tokenTransfers", [])
-        sol_amount = 0
-        token_amount = 0
-        token_symbol = ""
-        token_mint = ""
+                name, symbol, decimals = get_token_info(mint)
+                amount = amount_raw / (10 ** decimals) if decimals else amount_raw
 
-        for transfer in transfers:
-            mint = transfer.get("mint")
-            token_mint = mint
-            amount = transfer.get("tokenAmount")
-            from_user = transfer.get("fromUserAccount")
-            to_user = transfer.get("toUserAccount")
+                price_usd = get_token_usd_price(symbol)
+                amount_usd = amount * price_usd
 
-            symbol = get_token_symbol(mint)
-            if not symbol:
-                symbol = "Unknown"
+                msg += f"\n\n💸 <b>{amount:.4f} {symbol}</b> (~${amount_usd:.2f})"
+                msg += f"\n🔄 От: <code>{shorten(from_addr)}</code> → <code>{shorten(to_addr)}</code>"
+                msg += f"\n💰 Цена за 1 {symbol}: ${price_usd:.4f}"
 
-            try:
-                amount_value = float(amount)
-            except (TypeError, ValueError):
-                amount_value = 0
+            if transfers:
+                msg += "\n\n📦 <b>Перемещения токенов:</b>"
+                for t in transfers:
+                    mint = t.get("mint", "")
+                    from_addr = t.get("fromUserAccount", "")
+                    to_addr = t.get("toUserAccount", "")
+                    if from_addr in FEE_WALLETS or to_addr in FEE_WALLETS:
+                        continue  # пропускаем комиссии
 
-            direction = "🟢" if to_user else "🔴"
-            amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
+                    raw_amount = t.get("tokenAmount", 0)
+                    name, symbol, decimals = get_token_info(mint)
+                    amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
 
-            usd_str = ""
-            if symbol == "SOL" and sol_price_usd:
-                usd_equiv = abs(amount_value) * sol_price_usd
-                usd_str = f" (~${usd_equiv:.2f})"
-                sol_amount += abs(amount_value)
-            elif symbol != "Unknown":
-                token_amount = abs(amount_value)
-                token_symbol = symbol
+                    price_per_token = get_token_usd_price(symbol)
+                    usd = amount * price_per_token if price_per_token else 0
 
-            message_lines.append(f"{direction} {amount_formatted} {symbol}{usd_str}")
+                    emoji = "🟢" if to_addr and not from_addr else "🔴"
+                    amount_line = f"{emoji} <b>{amount:.6f}</b>{f' (~${usd:.2f})' if usd else ''}"
 
-        if sol_amount and token_amount:
-            price_per_token = (sol_amount * sol_price_usd) / token_amount
-            message_lines.append("")
-            message_lines.append(f"💰 Цена за 1 {token_symbol}: {price_per_token:.4f}")
+                    msg += (
+                        f"\n🔸 <b>{name}</b> ({symbol})"
+                        f"\n📤 От: {shorten(from_addr)}"
+                        f"\n📥 Кому: {shorten(to_addr)}"
+                        f"\n💰 Сумма: {amount_line}"
+                        f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
+                    )
 
-        if token_mint:
-            message_lines.append("")
-            message_lines.append(f"<code>{token_mint}</code>")
+            send_telegram_message(msg)
 
-        if message_lines:
-            send_message("\n".join(message_lines))
+        return '', 200
 
-    return "OK"
+    except Exception as e:
+        print("❌ Ошибка обработки запроса:", str(e))
+        return 'Internal Server Error', 500
 
-@app.route("/")
-def root():
-    return "Бот работает"
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+if __name__ == '__main__':
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
