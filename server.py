@@ -98,8 +98,19 @@ def get_token_usd_price(symbol):
         logging.exception(f"❌ Ошибка при запросе CoinGecko для {symbol.upper()}")
         return 0
 
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    try:
+        logging.debug("📩 Получен webhook-запрос")
+        auth_header = request.headers.get('Authorization')
+        if auth_header != f'Bearer {WEBHOOK_SECRET}':
+            logging.warning("❌ Неверный токен: %s", auth_header)
+            return 'Forbidden', 403
+
+        data = request.get_json(force=True)
+        logging.debug(f"📦 Полученные данные: {json.dumps(data)[:500]}")
+
     auth_header = request.headers.get('Authorization')
     if auth_header != f'Bearer {WEBHOOK_SECRET}':
         logging.warning("❌ Неверный токен: %s", auth_header)
@@ -141,5 +152,5 @@ def webhook():
         return '', 200
 
     except Exception as e:
-        logging.exception("❌ Ошибка обработки запроса")
+        logging.exception("❌ Ошибка обработки webhook")
         return 'Internal Server Error', 500
