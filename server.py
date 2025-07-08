@@ -100,7 +100,8 @@ def webhook():
             except (TypeError, ValueError):
                 amount_value = 0
 
-            direction = "🟢" if from_user else "🔴"
+            # Красный кружок если уходит, зелёный если приходит
+            direction = "🔴" if from_user else "🟢"
 
             amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
 
@@ -119,7 +120,7 @@ def webhook():
         # Вычисляем цену токена за 1, если есть и SOL, и другой токен
         if sol_amount and token_amount:
             price_per_token = (sol_amount * sol_price_usd) / token_amount
-            message_lines.append(f"\n💰 <i>Цена за 1 {token_symbol}: ${price_per_token:.4f}</i>")
+            message_lines.append(f"\n Цена за 1 {token_symbol}: ${price_per_token:.4f}")
 
         # Добавляем адрес токена для копирования
         if token_mint:
