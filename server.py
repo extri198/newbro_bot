@@ -93,23 +93,33 @@ def webhook():
             signature = tx.get("signature", "нет")
             msg = f"📥 <b>Новая транзакция: {tx_type}</b>\n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>"
 
-            transfers = tx.get("tokenTransfers", [])
-            for tr in transfers:
-                amount_raw = tr.get("tokenAmount", 0)
-                mint = tr.get("mint")
-                from_addr = tr.get("fromUserAccount")
-                to_addr = tr.get("toUserAccount")
+            
+transfers = tx.get("tokenTransfers", [])
+for tr in transfers:
+    amount_raw = tr.get("tokenAmount", 0)
+    mint = tr.get("mint")
+    from_addr = tr.get("fromUserAccount")
+    to_addr = tr.get("toUserAccount")
 
-                name, symbol, decimals = get_token_info(mint)
-                amount = amount_raw / (10 ** decimals) if decimals else amount_raw
+    name, symbol, decimals = get_token_info(mint)
+    amount = amount_raw / (10 ** decimals) if decimals else amount_raw
 
-                price_usd = get_token_usd_price(symbol)
-                amount_usd = amount * price_usd
+    # Получаем цену SOL в USD
+    sol_usd_price = get_token_usd_price("sol")
 
-                msg += f"\n\n💸 <b>{amount:.4f} {symbol}</b> (~${amount_usd:.2f})"
-                msg += f"\n🔄 От: <code>{shorten(from_addr)}</code> → <code>{shorten(to_addr)}</code>"
-                msg += f"\n💰 Цена за 1 {symbol}: ${price_usd:.4f}"
-
+    # Если это сам SOL — используем цену напрямую
+    if symbol.lower() == "sol":
+        amount_usd = amount * sol_usd_price
+        msg += f"\n\n💸 <b>{{amount:.4f}} SOL</b> (~${{amount_usd:.2f}})"
+        msg += f"\n🔄 От: <code>{{shorten(from_addr)}}</code> → <code>{{shorten(to_addr)}}</code>"
+        msg += f"\n💰 Цена за 1 SOL: ${{sol_usd_price:.4f}}"
+    else:
+        # Для других токенов считаем их эквивалент в SOL (пока на глаз, без точного курса)
+        token_in_sol = amount  # если есть возможность — здесь можно подставить курс вручную
+        amount_usd = token_in_sol * sol_usd_price
+        msg += f"\n\n🪙 <b>{{amount:.4f}} {{symbol}}</b> ≈ {{token_in_sol:.4f}} SOL (~${{amount_usd:.2f}})"
+        msg += f"\n🔄 От: <code>{{shorten(from_addr)}}</code> → <code>{{shorten(to_addr)}}</code>"
+ransfers = tx.get("tokenTransfers", [])
             if transfers:
                 msg += "\n\n📦 <b>Перемещения токенов:</b>"
                 for t in transfers:
