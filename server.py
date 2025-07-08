@@ -51,10 +51,23 @@ def get_token_symbol(mint):
         return None
 
 
+# Получение текущей цены SOL в USD через CoinGecko API
+def get_sol_price():
+    try:
+        res = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
+        res.raise_for_status()
+        return res.json().get("solana", {}).get("usd", 0)
+    except Exception as e:
+        print(f"❌ Ошибка при получении цены SOL: {e}")
+        return 0
+
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.get_json()
     print("✅ Получены данные:", json.dumps(data, indent=2, ensure_ascii=False))
+
+    sol_price_usd = get_sol_price()
 
     for tx in data:
         message_lines = []
@@ -63,6 +76,10 @@ def webhook():
             message_lines.append(f"<b>{description}</b>")
 
         transfers = tx.get("tokenTransfers", [])
+        sol_amount = 0
+        token_amount = 0
+        token_symbol = ""
+
         for transfer in transfers:
             mint = transfer.get("mint")
             amount = transfer.get("tokenAmount")
@@ -73,7 +90,6 @@ def webhook():
             if not symbol:
                 symbol = "Unknown"
 
-            # Определение направления и форматирование суммы
             try:
                 amount_value = float(amount)
             except (TypeError, ValueError):
@@ -87,8 +103,23 @@ def webhook():
                 direction = "🔁"
 
             amount_formatted = f"<b>{abs(amount_value):.9f}</b>"
-            line = f"{direction} {amount_formatted} {symbol}"
+
+            usd_str = ""
+            if symbol == "SOL" and sol_price_usd:
+                usd_equiv = abs(amount_value) * sol_price_usd
+                usd_str = f" (~${usd_equiv:.2f})"
+                sol_amount += abs(amount_value)
+            elif symbol != "Unknown":
+                token_amount = abs(amount_value)
+                token_symbol = symbol
+
+            line = f"{direction} {amount_formatted} {symbol}{usd_str}"
             message_lines.append(line)
+
+        # Вычисляем цену токена за 1, если есть и SOL, и другой токен
+        if sol_amount and token_amount:
+            price_per_token = (sol_amount * sol_price_usd) / token_amount
+            message_lines.append(f"💰 <i>Цена за 1 {token_symbol}: ${price_per_token:.2f}</i>")
 
         if message_lines:
             message_text = "\n".join(message_lines)
