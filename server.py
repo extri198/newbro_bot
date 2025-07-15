@@ -64,20 +64,46 @@ def get_token_info(mint):
         logger.info(f"Requesting Helius token info: {url} {payload}")
         response = requests.post(url, json=payload, timeout=10)
         logger.info(f"Helius response: {response.status_code} {response.text}")
-        
+
         if response.status_code == 429:
             logger.error(f"Helius API rate limit exceeded for {mint}")
             return shorten(mint), "-", 0
         elif response.status_code != 200:
             logger.error(f"Helius API error {response.status_code} for {mint}: {response.text}")
             return shorten(mint), "-", 0
-            
+
         data = response.json()
         if isinstance(data, list) and data:
             token = data[0]
-            name = token.get("name") or shorten(mint)
-            symbol = token.get("symbol") or "-"
-            decimals = token.get("decimals", 0)
+            # Try to extract from onChainMetadata
+            symbol = (
+                token.get("onChainMetadata", {})
+                    .get("metadata", {})
+                    .get("data", {})
+                    .get("symbol")
+            )
+            name = (
+                token.get("onChainMetadata", {})
+                    .get("metadata", {})
+                    .get("data", {})
+                    .get("name")
+            )
+            decimals = (
+                token.get("onChainMetadata", {})
+                    .get("metadata", {})
+                    .get("data", {})
+                    .get("decimals")
+            )
+            # Fallback to legacyMetadata
+            if not symbol:
+                symbol = token.get("legacyMetadata", {}).get("symbol")
+            if not name:
+                name = token.get("legacyMetadata", {}).get("name")
+            if decimals is None:
+                decimals = token.get("legacyMetadata", {}).get("decimals", 0)
+            # Fallback to shorten(mint) and "-"
+            name = name or shorten(mint)
+            symbol = symbol or "-"
             if symbol == "-":
                 logger.warning(f"Unknown token symbol for mint {mint}. Helius response: {json.dumps(token)}")
             logger.info(f"Token info for {mint}: name={name}, symbol={symbol}, decimals={decimals}")
@@ -85,7 +111,7 @@ def get_token_info(mint):
         else:
             logger.error(f"No token data returned for {mint}. Full Helius response: {json.dumps(data)}")
             return shorten(mint), "-", 0
-            
+
     except (RequestException, Timeout) as e:
         logger.error(f"Ошибка получения токена {mint}: {e}")
     except Exception as e:
