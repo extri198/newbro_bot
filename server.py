@@ -78,10 +78,12 @@ def get_token_info(mint):
             name = token.get("name") or shorten(mint)
             symbol = token.get("symbol") or "-"
             decimals = token.get("decimals", 0)
+            if symbol == "-":
+                logger.warning(f"Unknown token symbol for mint {mint}. Helius response: {json.dumps(token)}")
             logger.info(f"Token info for {mint}: name={name}, symbol={symbol}, decimals={decimals}")
             return name, symbol, decimals
         else:
-            logger.error(f"No token data returned for {mint}")
+            logger.error(f"No token data returned for {mint}. Full Helius response: {json.dumps(data)}")
             return shorten(mint), "-", 0
             
     except (RequestException, Timeout) as e:
@@ -90,7 +92,7 @@ def get_token_info(mint):
         logger.error(f"Unexpected error getting token {mint}: {e}")
     return shorten(mint), "-", 0
 
-def get_token_usd_price(symbol):
+def get_token_usd_price(symbol, mint=None):
     global LAST_COINGECKO_REQUEST
     
     symbol = symbol.lower()
@@ -100,7 +102,7 @@ def get_token_usd_price(symbol):
         
     coingecko_id = COINGECKO_IDS.get(symbol)
     if not coingecko_id:
-        logger.warning(f"No CoinGecko ID for symbol: {symbol}")
+        logger.warning(f"No CoinGecko ID for symbol: {symbol} (mint: {mint})")
         return 0
         
     # Rate limiting for CoinGecko
@@ -130,7 +132,7 @@ def get_token_usd_price(symbol):
             TOKEN_PRICE_CACHE[symbol] = usd
             logger.info(f"Fetched price for {symbol}: {usd}")
         else:
-            logger.warning(f"No USD price found for {symbol}")
+            logger.warning(f"No USD price found for {symbol} (mint: {mint})")
         return usd
         
     except (RequestException, Timeout) as e:
@@ -175,7 +177,7 @@ def webhook():
                     name, symbol, decimals = get_token_info(mint)
                     amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
 
-                    price_per_token = get_token_usd_price(symbol)
+                    price_per_token = get_token_usd_price(symbol, mint)
                     usd = amount * price_per_token if price_per_token else 0
 
                     emoji = "🟢" if to_addr and not from_addr else "🔴"
