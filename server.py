@@ -77,20 +77,18 @@ def get_token_info(mint):
         if isinstance(data, list) and data:
             token = data[0]
             # Symbol and name
-            symbol = (
+            onchain_data = (
                 token.get("onChainMetadata", {})
                     .get("metadata", {})
                     .get("data", {})
-                    .get("symbol")
-            ) or token.get("legacyMetadata", {}).get("symbol")
-            name = (
-                token.get("onChainMetadata", {})
-                    .get("metadata", {})
-                    .get("data", {})
-                    .get("name")
-            ) or token.get("legacyMetadata", {}).get("name")
+            )
+            legacy_metadata = token.get("legacyMetadata") or {}
+            symbol = onchain_data.get("symbol") or (legacy_metadata.get("symbol") if isinstance(legacy_metadata, dict) else None)
+            name = onchain_data.get("name") or (legacy_metadata.get("name") if isinstance(legacy_metadata, dict) else None)
             # Decimals
-            decimals = token.get("legacyMetadata", {}).get("decimals")
+            decimals = None
+            if legacy_metadata and isinstance(legacy_metadata, dict):
+                decimals = legacy_metadata.get("decimals")
             if decimals is None:
                 decimals = (
                     token.get("onChainAccountInfo", {})
