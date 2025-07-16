@@ -22,6 +22,7 @@ HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 # Известные fee-collector адреса (можно расширять)
 FEE_WALLETS = {
     "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
+    "9yj3zvLS3fDMqi1F8zhkaWfq8TZpZWHe6cz1Sgt7djXf",  #Phantom fee
     "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
 }
 
@@ -75,33 +76,32 @@ def get_token_info(mint):
         data = response.json()
         if isinstance(data, list) and data:
             token = data[0]
-            # Try to extract from onChainMetadata
+            # Symbol and name
             symbol = (
                 token.get("onChainMetadata", {})
                     .get("metadata", {})
                     .get("data", {})
                     .get("symbol")
-            )
+            ) or token.get("legacyMetadata", {}).get("symbol")
             name = (
                 token.get("onChainMetadata", {})
                     .get("metadata", {})
                     .get("data", {})
                     .get("name")
-            )
-            decimals = (
-                token.get("onChainMetadata", {})
-                    .get("metadata", {})
-                    .get("data", {})
-                    .get("decimals")
-            )
-            # Fallback to legacyMetadata
-            if not symbol:
-                symbol = token.get("legacyMetadata", {}).get("symbol")
-            if not name:
-                name = token.get("legacyMetadata", {}).get("name")
+            ) or token.get("legacyMetadata", {}).get("name")
+            # Decimals
+            decimals = token.get("legacyMetadata", {}).get("decimals")
             if decimals is None:
-                decimals = token.get("legacyMetadata", {}).get("decimals", 0)
-            # Fallback to shorten(mint) and "-"
+                decimals = (
+                    token.get("onChainAccountInfo", {})
+                        .get("accountInfo", {})
+                        .get("data", {})
+                        .get("parsed", {})
+                        .get("info", {})
+                        .get("decimals")
+                )
+            if decimals is None:
+                decimals = 0
             name = name or shorten(mint)
             symbol = symbol or "-"
             if symbol == "-":
