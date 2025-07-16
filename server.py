@@ -77,20 +77,16 @@ def get_token_info(mint):
         if isinstance(data, list) and data:
             token = data[0]
             # Symbol and name
-            symbol = (
+            onchain_data = (
                 token.get("onChainMetadata", {})
                     .get("metadata", {})
                     .get("data", {})
-                    .get("symbol")
-            ) or token.get("legacyMetadata", {}).get("symbol")
-            name = (
-                token.get("onChainMetadata", {})
-                    .get("metadata", {})
-                    .get("data", {})
-                    .get("name")
-            ) or token.get("legacyMetadata", {}).get("name")
+            )
+            legacy_metadata = token.get("legacyMetadata") or {}
+            symbol = onchain_data.get("symbol") or legacy_metadata.get("symbol")
+            name = onchain_data.get("name") or legacy_metadata.get("name")
             # Decimals
-            decimals = token.get("legacyMetadata", {}).get("decimals")
+            decimals = legacy_metadata.get("decimals")
             if decimals is None:
                 decimals = (
                     token.get("onChainAccountInfo", {})
@@ -168,6 +164,10 @@ def get_token_usd_price(symbol, mint=None):
         logger.error(f"Unexpected error getting price for {symbol}: {e}")
         return 0
 
+def is_known_token(symbol):
+    symbol = (symbol or "").upper()
+    return symbol in {"SOL", "USDC", "WRAPPED SOL", "WSOL"}
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     auth_header = request.headers.get('Authorization')
@@ -209,12 +209,17 @@ def webhook():
                     emoji = "🟢" if to_addr and not from_addr else "🔴"
                     amount_line = f"{emoji} <b>{amount:.6f}</b>{f' (~${usd:.2f})' if usd else ''}"
 
+                    if is_known_token(symbol):
+                        header_line = f"<b>{name}</b> ({symbol})"
+                    else:
+                        header_line = f"<code>{mint}</code>"
+                    msg += f"\n🔸 {header_line}"
+
                     msg += (
-                        f"\n🔸 <b>{name}</b> ({symbol})"
                         f"\n📤 От: {shorten(from_addr)}"
                         f"\n📥 Кому: {shorten(to_addr)}"
                         f"\n💰 Сумма: {amount_line}"
-                        f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
+                        # f"\n🔗 <a href='https://solscan.io/token/{mint}'>{mint}</a>\n"
                     )
 
             send_telegram_message(msg)
