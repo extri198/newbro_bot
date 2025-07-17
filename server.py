@@ -204,16 +204,6 @@ def webhook():
                 msg += "\n\n📦 <b>Перемещения токенов:</b>"
                 if signer_sol_line:
                     msg += signer_sol_line
-                # Show single net native SOL transfer if nonzero
-                if native_sol_total != 0:
-                    sol_amount = native_sol_total / 1_000_000_000
-                    emoji = "🟢" if sol_amount > 0 else "🔴"
-                    amount_line = f"{emoji} <b>{abs(sol_amount):.6f}</b>"
-                    msg += (
-                        f"\n🔸 <b>SOL</b> (native)"
-                        f"\n💰 Сумма: {amount_line}"
-                        f"\n<code>So11111111111111111111111111111111111111112</code>\n"
-                    )
                 for t in transfers:
                     mint = t.get("mint", "")
                     from_addr = t.get("fromUserAccount", "")
