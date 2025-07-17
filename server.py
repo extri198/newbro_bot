@@ -227,7 +227,7 @@ def webhook():
                     if decimals is None:
                         decimals = default_decimals
                     try:
-                        amount = float(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
+                        amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
                     except Exception as e:
                         logger.error(f"Error calculating amount for mint={mint}: raw_amount={raw_amount}, decimals={decimals}, error={e}")
                         amount = 0
