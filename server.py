@@ -185,10 +185,25 @@ def webhook():
             msg = f"📥 <b>Новая транзакция: {tx_type}</b>" # \n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>
 
             transfers = tx.get("tokenTransfers", [])
-            # Calculate net SOL movement for the transaction
-            native_sol_total = sum(acc.get("nativeBalanceChange", 0) for acc in tx.get("accountData", []))
-            if native_sol_total != 0 or transfers:
+            # Show SOL spent/received for the signer (first account in accountData)
+            account_data = tx.get("accountData", [])
+            signer_sol_line = ""
+            if account_data:
+                signer_account = account_data[0].get("account")
+                signer_change = account_data[0].get("nativeBalanceChange", 0)
+                if signer_change != 0:
+                    sol_amount = signer_change / 1_000_000_000
+                    emoji = "🟢" if sol_amount > 0 else "🔴"
+                    amount_line = f"{emoji} <b>{abs(sol_amount):.6f}</b>"
+                    signer_sol_line = (
+                        f"\n🔸 <b>SOL</b> (signer)"
+                        f"\n💰 Сумма: {amount_line}"
+                        f"\n<code>So11111111111111111111111111111111111111112</code>\n"
+                    )
+            if signer_sol_line or transfers:
                 msg += "\n\n📦 <b>Перемещения токенов:</b>"
+                if signer_sol_line:
+                    msg += signer_sol_line
                 # Show single net native SOL transfer if nonzero
                 if native_sol_total != 0:
                     sol_amount = native_sol_total / 1_000_000_000
