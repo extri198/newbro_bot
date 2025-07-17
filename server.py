@@ -198,7 +198,12 @@ def webhook():
 
                     raw_amount = t.get("tokenAmount", 0)
                     name, symbol, decimals = get_token_info(mint)
-                    amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
+                    try:
+                        amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
+                    except Exception as e:
+                        logger.error(f"Error calculating amount for mint={mint}: raw_amount={raw_amount}, decimals={decimals}, error={e}")
+                        amount = 0
+                    logger.info(f"Transfer: mint={mint}, from={from_addr}, to={to_addr}, raw_amount={raw_amount}, decimals={decimals}, amount={amount}")
 
                     price_per_token = get_token_usd_price(symbol, mint)
                     usd = amount * price_per_token if price_per_token else 0
