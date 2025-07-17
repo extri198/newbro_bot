@@ -194,7 +194,11 @@ def webhook():
                 if signer_change != 0:
                     sol_amount = signer_change / 1_000_000_000
                     emoji = "🟢" if sol_amount > 0 else "🔴"
-                    amount_line = f"{emoji} <b>{abs(sol_amount):.6f}</b>"
+                    # Fetch SOL price in USD
+                    sol_usd_price = get_token_usd_price("SOL", "So11111111111111111111111111111111111111112")
+                    usd = abs(sol_amount) * sol_usd_price if sol_usd_price else 0
+                    usd_str = f" (~${usd:.2f})" if usd else ""
+                    amount_line = f"{emoji} <b>{abs(sol_amount):.6f}</b>{usd_str}"
                     signer_sol_line = (
                         f"\n🔸 <b>SOL</b> (signer)"
                         f"\n💰 Сумма: {amount_line}"
