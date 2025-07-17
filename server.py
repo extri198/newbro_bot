@@ -185,35 +185,17 @@ def webhook():
             msg = f"📥 <b>Новая транзакция: {tx_type}</b>" # \n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>
 
             transfers = tx.get("tokenTransfers", [])
-            native_transfers = []
-            # Add native SOL transfers using nativeBalanceChange
-            for acc in tx.get("accountData", []):
-                native_change = acc.get("nativeBalanceChange", 0)
-                if native_change != 0:
-                    from_addr = acc.get("account", "")
-                    # Positive change means received, negative means sent
-                    if native_change > 0:
-                        to_addr = from_addr
-                        from_addr = "—"
-                    else:
-                        to_addr = "—"
-                    sol_amount = native_change / 1_000_000_000
-                    native_transfers.append({
-                        "mint": "So11111111111111111111111111111111111111112",
-                        "from": from_addr,
-                        "to": to_addr,
-                        "amount": sol_amount
-                    })
-            if native_transfers or transfers:
+            # Calculate net SOL movement for the transaction
+            native_sol_total = sum(acc.get("nativeBalanceChange", 0) for acc in tx.get("accountData", []))
+            if native_sol_total != 0 or transfers:
                 msg += "\n\n📦 <b>Перемещения токенов:</b>"
-                # Show native SOL transfers first
-                for t in native_transfers:
-                    emoji = "🟢" if t["to"] != "—" else "🔴"
-                    amount_line = f"{emoji} <b>{t['amount']:.6f}</b>"
+                # Show single net native SOL transfer if nonzero
+                if native_sol_total != 0:
+                    sol_amount = native_sol_total / 1_000_000_000
+                    emoji = "🟢" if sol_amount > 0 else "🔴"
+                    amount_line = f"{emoji} <b>{abs(sol_amount):.6f}</b>"
                     msg += (
-                        f"\n🔸 <b>SOL (native)</b> (SOL)"
-                        f"\n📤 От: {shorten(t['from'])}"
-                        f"\n📥 Кому: {shorten(t['to'])}"
+                        f"\n🔸 <b>SOL</b> (native)"
                         f"\n💰 Сумма: {amount_line}"
                         f"\n<code>So11111111111111111111111111111111111111112</code>\n"
                     )
