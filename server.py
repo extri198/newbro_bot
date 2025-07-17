@@ -208,15 +208,13 @@ def webhook():
                 msg += "\n\n📦 <b>------------------------:</b>"
                 if signer_sol_line:
                     msg += signer_sol_line
+                # Add SPL token transfers
                 for t in transfers:
                     mint = t.get("mint", "")
                     from_addr = t.get("fromUserAccount", "")
                     to_addr = t.get("toUserAccount", "")
-                    logger.info(f"Transfer: mint={mint}, from={from_addr}, to={to_addr}")
                     if from_addr in FEE_WALLETS or to_addr in FEE_WALLETS:
-                        logger.info(f"Skipping fee wallet transfer: from={from_addr}, to={to_addr}")
                         continue  # пропускаем комиссии
-
                     # Extract amount and decimals from either rawTokenAmount or top-level fields
                     raw_token_amount = t.get("rawTokenAmount")
                     if raw_token_amount and isinstance(raw_token_amount, dict):
@@ -234,19 +232,16 @@ def webhook():
                         logger.error(f"Error calculating amount for mint={mint}: raw_amount={raw_amount}, decimals={decimals}, error={e}")
                         amount = 0
                     logger.info(f"Transfer: mint={mint}, from={from_addr}, to={to_addr}, raw_amount={raw_amount}, decimals={decimals}, amount={amount}")
-
                     price_per_token = get_token_usd_price(symbol, mint)
                     usd = amount * price_per_token if price_per_token else 0
-
                     emoji = "🟢" if to_addr and not from_addr else "🔴"
                     amount_line = f"{emoji} <b>{amount:.6f}</b>{f' (~${usd:.2f})' if usd else ''}"
-
                     msg += (
                         f"\n🔸 <b>{name}</b> ({symbol})"
                         f"\n📤 От: {shorten(from_addr)}"
                         f"\n📥 Кому: {shorten(to_addr)}"
                         f"\n💰 Сумма: {amount_line}"
-                        f"\n<code>{mint}</code>\n"  # Add token address as copyable code block
+                        f"\n<code>{mint}</code>\n"
                     )
 
             send_telegram_message(msg)
