@@ -196,7 +196,14 @@ def webhook():
                         logger.info(f"Skipping fee wallet transfer: from={from_addr}, to={to_addr}")
                         continue  # пропускаем комиссии
 
-                    raw_amount = t.get("tokenAmount", 0)
+                    # Extract amount and decimals from either rawTokenAmount or top-level fields
+                    raw_token_amount = t.get("rawTokenAmount")
+                    if raw_token_amount and isinstance(raw_token_amount, dict):
+                        raw_amount = raw_token_amount.get("tokenAmount", 0)
+                        # Use decimals from rawTokenAmount if present, else from token info
+                        decimals = raw_token_amount.get("decimals", decimals)
+                    else:
+                        raw_amount = t.get("tokenAmount", 0)
                     name, symbol, decimals = get_token_info(mint)
                     try:
                         amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
