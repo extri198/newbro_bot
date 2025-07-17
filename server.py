@@ -184,9 +184,17 @@ def webhook():
             logger.info(f"Processing tx: type={tx_type}, signature={signature}")
             msg = f"📥 <b>Новая транзакция: {tx_type}</b>" # \n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>
 
-            transfers = tx.get("tokenTransfers", [])
+            # Aggregate all SPL token transfers from all accounts if available
+            aggregated_transfers = []
+            for account in account_data:
+                # Some APIs use 'tokenBalanceChanges' or similar per account
+                token_changes = account.get('tokenBalanceChanges')
+                if token_changes and isinstance(token_changes, list):
+                    aggregated_transfers.extend(token_changes)
+            # If no per-account token changes, fallback to top-level 'tokenTransfers'
+            if not aggregated_transfers:
+                aggregated_transfers = tx.get("tokenTransfers", [])
             # Show SOL spent/received for the signer (first account in accountData)
-            account_data = tx.get("accountData", [])
             signer_sol_line = ""
             if account_data:
                 signer_account = account_data[0].get("account")
@@ -204,12 +212,12 @@ def webhook():
                         f"\n💰 Сумма: {amount_line}"
                         f"\n<code>So11111111111111111111111111111111111111112</code>\n"
                     )
-            if signer_sol_line or transfers:
+            if signer_sol_line or aggregated_transfers:
                 msg += "\n\n📦 <b>------------------------:</b>"
                 if signer_sol_line:
                     msg += signer_sol_line
                 # Add SPL token transfers
-                for t in transfers:
+                for t in aggregated_transfers:
                     mint = t.get("mint", "")
                     from_addr = t.get("fromUserAccount", "")
                     to_addr = t.get("toUserAccount", "")
