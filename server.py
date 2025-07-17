@@ -206,7 +206,7 @@ def webhook():
                         raw_amount = t.get("tokenAmount", 0)
                     name, symbol, decimals = get_token_info(mint)
                     try:
-                        amount = int(str(raw_amount)) / (10 ** decimals) if decimals else float(raw_amount)
+                        amount = float(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
                     except Exception as e:
                         logger.error(f"Error calculating amount for mint={mint}: raw_amount={raw_amount}, decimals={decimals}, error={e}")
                         amount = 0
