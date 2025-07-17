@@ -205,7 +205,7 @@ def webhook():
                         f"\n<code>So11111111111111111111111111111111111111112</code>\n"
                     )
             if signer_sol_line or transfers:
-                msg += "\n\n📦 <b>Перемещения токенов:</b>"
+                msg += "\n\n📦 <b>------------------------:</b>"
                 if signer_sol_line:
                     msg += signer_sol_line
                 for t in transfers:
@@ -221,11 +221,13 @@ def webhook():
                     raw_token_amount = t.get("rawTokenAmount")
                     if raw_token_amount and isinstance(raw_token_amount, dict):
                         raw_amount = raw_token_amount.get("tokenAmount", 0)
-                        # Use decimals from rawTokenAmount if present, else from token info
-                        decimals = raw_token_amount.get("decimals", decimals)
+                        decimals = raw_token_amount.get("decimals")
                     else:
                         raw_amount = t.get("tokenAmount", 0)
-                    name, symbol, decimals = get_token_info(mint)
+                        decimals = None
+                    name, symbol, default_decimals = get_token_info(mint)
+                    if decimals is None:
+                        decimals = default_decimals
                     try:
                         amount = float(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
                     except Exception as e:
