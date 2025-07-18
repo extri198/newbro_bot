@@ -39,6 +39,8 @@ TOKEN_PRICE_CACHE = {}
 LAST_COINGECKO_REQUEST = 0
 COINGECKO_RATE_LIMIT = 1.2  # seconds between requests (50 calls/minute)
 
+SOL_MINTS = {"So11111111111111111111111111111111111111112"}
+
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
