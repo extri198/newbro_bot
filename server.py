@@ -214,6 +214,53 @@ def webhook():
                         f"\n💰 Сумма: {amount_line}"
                         f"\n<code>So11111111111111111111111111111111111111112</code>\n"
                     )
+            # Calculate SPL token price in SOL if possible
+            # 1. Find the main SPL token (largest net change, excluding fee wallets)
+            token_net_changes = {}
+            for t in aggregated_transfers:
+                # Use correct address fields
+                if "userAccount" in t or "tokenAccount" in t:
+                    addr = t.get("userAccount", "")
+                else:
+                    addr = t.get("fromUserAccount", "")
+                mint = t.get("mint", "")
+                # Only consider tokens not involving fee wallets
+                if addr not in FEE_WALLETS and mint:
+                    # Extract amount and decimals
+                    raw_token_amount = t.get("rawTokenAmount")
+                    if raw_token_amount and isinstance(raw_token_amount, dict):
+                        raw_amount = raw_token_amount.get("tokenAmount", 0)
+                        decimals = raw_token_amount.get("decimals")
+                    else:
+                        raw_amount = t.get("tokenAmount", 0)
+                        decimals = None
+                    _, _, default_decimals = get_token_info(mint)
+                    if decimals is None:
+                        decimals = default_decimals
+                    try:
+                        amount = int(raw_amount) / (10 ** decimals) if decimals else float(raw_amount)
+                    except Exception:
+                        amount = 0
+                    token_net_changes[mint] = token_net_changes.get(mint, 0) + amount
+            # 2. Find the SPL token with the largest net change (by absolute value)
+            main_token_mint = None
+            main_token_change = 0
+            for mint, change in token_net_changes.items():
+                if abs(change) > abs(main_token_change):
+                    main_token_mint = mint
+                    main_token_change = change
+            # 3. Get signer's SOL net change
+            signer_sol_change = 0
+            if account_data:
+                signer_sol_change = account_data[0].get("nativeBalanceChange", 0) / 1_000_000_000
+            # 4. If both are present and nonzero, calculate price and add to message
+            if main_token_mint and main_token_change != 0 and signer_sol_change != 0:
+                # Only show if SOL and token change are opposite in sign (swap)
+                if (signer_sol_change < 0 < main_token_change) or (signer_sol_change > 0 > main_token_change):
+                    _, symbol, _ = get_token_info(main_token_mint)
+                    price_per_token = abs(signer_sol_change) / abs(main_token_change)
+                    msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token:.8f} SOL"
+
             if signer_sol_line or aggregated_transfers:
                 msg += "\n\n📦 <b>------------------------:</b>"
                 if signer_sol_line:
