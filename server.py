@@ -258,8 +258,10 @@ def webhook():
             if account_data:
                 signer_sol_change = account_data[0].get("nativeBalanceChange", 0) / 1_000_000_000
             # 4. If both are present and nonzero, calculate price and add to message
+            logger.info(f"Debug SPL price: signer_sol_change={signer_sol_change}, main_token_mint={main_token_mint}, main_token_change={main_token_change}")
             if main_token_mint and main_token_change != 0 and signer_sol_change != 0:
                 # Only show if SOL and token change are opposite in sign (swap)
+                logger.info(f"Debug SPL price condition: (signer_sol_change < 0 < main_token_change)={signer_sol_change < 0 < main_token_change}, (signer_sol_change > 0 > main_token_change)={signer_sol_change > 0 > main_token_change}")
                 if (signer_sol_change < 0 < main_token_change) or (signer_sol_change > 0 > main_token_change):
                     _, symbol, _ = get_token_info(main_token_mint)
                     price_per_token = abs(signer_sol_change) / abs(main_token_change)
