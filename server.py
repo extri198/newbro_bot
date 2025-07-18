@@ -22,6 +22,7 @@ HELIUS_API_KEY = os.getenv("HELIUS_API_KEY")
 # Известные fee-collector адреса (можно расширять)
 FEE_WALLETS = {
     "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
+    "9yj3zvLS3fDMqi1F8zhkaWfq8TZpZWHe6cz1Sgt7djXf", # phantom fees
     "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
 }
 
