@@ -272,6 +272,9 @@ def webhook():
                     sol_emoji = '🟢' if signer_sol_change > 0 else '🔴'
                     sol_net_usd = signer_sol_change * sol_usd_price if sol_usd_price else 0
                     msg += f"\n{sol_emoji} <b>Net SOL change:</b> {signer_sol_change:.6f} (~${sol_net_usd:.2f})"
+                    # Add final SPL token destination address (to_addr) as code block
+                    if 'to_addr' in locals() and to_addr:
+                        msg += f"\n🏁 <b>Final SPL destination:</b> <code>{to_addr}</code>"
                     # Add copyable signer address
                     if signer_account:
                         msg += f"\n👤 <b>Signer:</b> <code>{signer_account}</code>"
