@@ -242,10 +242,12 @@ def webhook():
                     except Exception:
                         amount = 0
                     token_net_changes[mint] = token_net_changes.get(mint, 0) + amount
-            # 2. Find the SPL token with the largest net change (by absolute value)
+            # 2. Find the SPL token with the largest net change (by absolute value), excluding SOL/wSOL
             main_token_mint = None
             main_token_change = 0
             for mint, change in token_net_changes.items():
+                if mint in SOL_MINTS:
+                    continue  # skip SOL/wSOL
                 if abs(change) > abs(main_token_change):
                     main_token_mint = mint
                     main_token_change = change
