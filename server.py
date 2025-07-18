@@ -220,8 +220,15 @@ def webhook():
                 # Add SPL token transfers
                 for t in aggregated_transfers:
                     mint = t.get("mint", "")
-                    from_addr = t.get("fromUserAccount", "")
-                    to_addr = t.get("toUserAccount", "")
+                    # Determine address fields based on structure
+                    if "userAccount" in t or "tokenAccount" in t:
+                        # Per-account tokenBalanceChanges structure
+                        from_addr = t.get("userAccount", "")
+                        to_addr = t.get("tokenAccount", "")
+                    else:
+                        # Top-level tokenTransfers structure
+                        from_addr = t.get("fromUserAccount", "")
+                        to_addr = t.get("toUserAccount", "")
                     if from_addr in FEE_WALLETS or to_addr in FEE_WALLETS:
                         continue  # пропускаем комиссии
                     # Extract amount and decimals from either rawTokenAmount or top-level fields
