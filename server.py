@@ -268,6 +268,10 @@ def webhook():
                     price_per_token_usd = price_per_token_sol * sol_usd_price if sol_usd_price else 0
                     msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token_sol:.8f} SOL"
                     msg += f"\n💲 <b>Цена {symbol} в USD:</b> ${price_per_token_usd:.6f}"
+                    # Add overall SOL net change line
+                    sol_emoji = '🟢' if signer_sol_change > 0 else '🔴'
+                    sol_net_usd = signer_sol_change * sol_usd_price if sol_usd_price else 0
+                    msg += f"\n{sol_emoji} <b>Net SOL change:</b> {signer_sol_change:.6f} (~${sol_net_usd:.2f})"
                     # Add copyable signer address
                     if signer_account:
                         msg += f"\n👤 <b>Signer:</b> <code>{signer_account}</code>"
