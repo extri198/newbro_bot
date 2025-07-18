@@ -184,6 +184,7 @@ def webhook():
             logger.info(f"Processing tx: type={tx_type}, signature={signature}")
             msg = f"📥 <b>Новая транзакция: {tx_type}</b>" # \n🔗 <a href='https://solscan.io/tx/{signature}'>{signature}</a>
 
+            account_data = tx.get("accountData", [])
             # Aggregate all SPL token transfers from all accounts if available
             aggregated_transfers = []
             for account in account_data:
