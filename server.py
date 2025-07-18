@@ -262,8 +262,15 @@ def webhook():
                 logger.info(f"Debug SPL price condition: (signer_sol_change < 0 < main_token_amount)={signer_sol_change < 0 < main_token_amount}, (signer_sol_change > 0 > main_token_amount)={signer_sol_change > 0 > main_token_amount}")
                 if (signer_sol_change < 0 < main_token_amount) or (signer_sol_change > 0 > main_token_amount):
                     _, symbol, _ = get_token_info(main_token_mint)
-                    price_per_token = abs(signer_sol_change) / abs(main_token_amount)
-                    msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token:.8f} SOL"
+                    price_per_token_sol = abs(signer_sol_change) / abs(main_token_amount)
+                    # Calculate USD price using CoinGecko
+                    sol_usd_price = get_token_usd_price("SOL", "So11111111111111111111111111111111111111112")
+                    price_per_token_usd = price_per_token_sol * sol_usd_price if sol_usd_price else 0
+                    msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token_sol:.8f} SOL"
+                    msg += f"\n💲 <b>Цена {symbol} в USD:</b> ${price_per_token_usd:.6f}"
+                    # Add copyable signer address
+                    if signer_account:
+                        msg += f"\n👤 <b>Signer:</b> <code>{signer_account}</code>"
 
             if signer_sol_line or aggregated_transfers:
                 msg += "\n\n📦 <b>------------------------:</b>"
