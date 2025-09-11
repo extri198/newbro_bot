@@ -311,7 +311,7 @@ def webhook():
                     msg += f"\n{sol_emoji} <b>Net SOL change:</b> {signer_sol_change:.6f} (~${sol_net_usd:.2f})"
                     # Add final SPL token destination address (to_addr) as code block
                     if 'to_addr' in locals() and to_addr:
-                       # msg += f"\n🏁 <b>Final SPL destination:</b> <code>{to_addr}</code>"
+                        msg += f"\n🏁 <b>Final SPL destination:</b> <code>{to_addr}</code>"
                     # Add copyable signer address
                     if signer_account:
                         msg += f"\n👤 <b>Signer:</b> <code>{signer_account}</code>"
