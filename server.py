@@ -6,6 +6,7 @@ import json
 import time
 from requests.exceptions import RequestException, Timeout
 import logging
+from collections import OrderedDict
 
 load_dotenv()
 app = Flask(__name__)
@@ -24,16 +25,7 @@ FEE_WALLETS = {
     "E2HzWjvbrYyfU9uBAGz1FUGXo7xYzvJrJtP8FFmrSzAa",  # Magic Eden
     "9yj3zvLS3fDMqi1F8zhkaWfq8TZpZWHe6cz1Sgt7djXf", # phantom fees
     "FLiPGqowc82LLR173hKiFYBq2fCxLZEST5iHbHwj8xKb", # casino flip
-    "Dj8H1jRSDM9z2C8KmgBJ4FVWwnBkpffqq9Wz9Wg33uSh", # bitoki
-    "BdF6PoNB1huwye99wFxtMQ97k5iR4m3CqvvipSZKsix", # clip
-    "FLipG5QHjZe1H12f6rr5LCnrmqjhwuBTBp78GwzxnwkR", # win big
-    "FLipgewPwNeqvwPFW3CvMTLpHTvuX7BQoXC6xhrWiCR3", # big win
-    "5Hr7wZg7oBpVhH5nngRqzr5W7ZFUfCsfEhbziZJak7fr", # odinbot
-    "AoX3EMzVXCNBdCNvboc7yGM4gsr3wcKd7hGsZ4yXcydU", # boost
-    "6HMoJqFfifATfSqD7YY3YXA3CZxwjfCwpExGEvQ5bekY", # alpha strike
-    "NBAdxcp9pFNW7X8oFcg7USFXr4cPYLuTio56AzwnB5W", # land
-    "7K5kv9CFSPTrfygCEs6ZRQRJYtiU35ov9fo91QQNvhn6", # leap
-    "2Tq5W7ydAHFuHbSJ1KTcKAsRaHBAQzoCFiVuNwtagns2", # airdrop
+    "FLiPgGTXtBtEJoytikaywvWgbz5a56DdHKZU72HSYMFF", # casino flip
     "9hQBGnKqxYfaP3dtkEyYVLVwzYEEVK2vWa9V6rK4ZciE"
 }
 
@@ -48,16 +40,6 @@ FEE_WALLETS = {
 FILTERED_SIGNERS = {
     "FLiPGqowc82LLR173hKiFYBq2fCxLZEST5iHbHwj8xKb", # casino flip
     "FLiPgGTXtBtEJoytikaywvWgbz5a56DdHKZU72HSYMFF", # casino flip
-    "Dj8H1jRSDM9z2C8KmgBJ4FVWwnBkpffqq9Wz9Wg33uSh", # bitoki
-    "BdF6PoNB1huwye99wFxtMQ97k5iR4m3CqvvipSZKsix", # clip
-    "FLipG5QHjZe1H12f6rr5LCnrmqjhwuBTBp78GwzxnwkR", # win big
-    "FLipgewPwNeqvwPFW3CvMTLpHTvuX7BQoXC6xhrWiCR3", # big win
-    "5Hr7wZg7oBpVhH5nngRqzr5W7ZFUfCsfEhbziZJak7fr", # odinbot
-    "AoX3EMzVXCNBdCNvboc7yGM4gsr3wcKd7hGsZ4yXcydU", # boost
-    "6HMoJqFfifATfSqD7YY3YXA3CZxwjfCwpExGEvQ5bekY", # alpha strike
-    "NBAdxcp9pFNW7X8oFcg7USFXr4cPYLuTio56AzwnB5W", # land
-    "7K5kv9CFSPTrfygCEs6ZRQRJYtiU35ov9fo91QQNvhn6", # leap
-    "2Tq5W7ydAHFuHbSJ1KTcKAsRaHBAQzoCFiVuNwtagns2", # airdrop
     # Добавьте сюда другие адреса для фильтрации
 }
 
@@ -75,6 +57,8 @@ LAST_COINGECKO_REQUEST = 0
 COINGECKO_RATE_LIMIT = 1.2  # seconds between requests (50 calls/minute)
 
 SOL_MINTS = {"So11111111111111111111111111111111111111112"}
+MAX_SIGNATURE_CACHE = 200
+PROCESSED_SIGNATURES = OrderedDict()
 
 def send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -220,7 +204,16 @@ def webhook():
             tx_type = tx.get("type", "неизвестно")
             signature = tx.get("signature", "нет")
             logger.info(f"Processing tx: type={tx_type}, signature={signature}")
-            
+
+            # Skip already processed signatures to avoid duplicate Telegram messages
+            if signature and signature != "нет":
+                if signature in PROCESSED_SIGNATURES:
+                    logger.info(f"Skipping duplicate tx: signature={signature}")
+                    continue
+                PROCESSED_SIGNATURES[signature] = time.time()
+                if len(PROCESSED_SIGNATURES) > MAX_SIGNATURE_CACHE:
+                    PROCESSED_SIGNATURES.popitem(last=False)
+
             # Check if signer is in filtered list
             account_data = tx.get("accountData", [])
             if account_data:
@@ -313,15 +306,15 @@ def webhook():
                     # Calculate USD price using CoinGecko
                     sol_usd_price = get_token_usd_price("SOL", "So11111111111111111111111111111111111111112")
                     price_per_token_usd = price_per_token_sol * sol_usd_price if sol_usd_price else 0
-                    # msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token_sol:.8f} SOL"
+                    msg += f"\n💱 <b>Цена {symbol} в SOL:</b> {price_per_token_sol:.8f} SOL"
                     msg += f"\n💲 <b>Цена {symbol} в USD:</b> ${price_per_token_usd:.6f}"
                     # Add overall SOL net change line
                     sol_emoji = '🟢' if signer_sol_change > 0 else '🔴'
                     sol_net_usd = signer_sol_change * sol_usd_price if sol_usd_price else 0
                     msg += f"\n{sol_emoji} <b>Net SOL change:</b> {signer_sol_change:.6f} (~${sol_net_usd:.2f})"
                     # Add final SPL token destination address (to_addr) as code block
-                    # if 'to_addr' in locals() and to_addr:
-                    #     msg += f"\n🏁 <b>Final SPL destination:</b> <code>{to_addr}</code>"
+                    if 'to_addr' in locals() and to_addr:
+                        msg += f"\n🏁 <b>Final SPL destination:</b> <code>{to_addr}</code>"
                     # Add copyable signer address
                     if signer_account:
                         msg += f"\n👤 <b>Signer:</b> <code>{signer_account}</code>"
@@ -367,9 +360,9 @@ def webhook():
                     amount_line = f"{emoji} <b>{amount:.6f}</b>{f' (~${usd:.2f})' if usd else ''}"
                     msg += (
                         f"\n🔸 <b>{name}</b> ({symbol})"
-                        # f"\n📤 От: {shorten(from_addr)}"
-                        # f"\n📥 Кому: {shorten(to_addr)}"
-                        # f"\n💰 Сумма: {amount_line}"
+                        f"\n📤 От: {shorten(from_addr)}"
+                        f"\n📥 Кому: {shorten(to_addr)}"
+                        f"\n💰 Сумма: {amount_line}"
                         f"\n<code>{mint}</code>\n"
                     )
 
